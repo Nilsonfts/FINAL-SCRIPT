@@ -202,40 +202,48 @@ function runFullAnalyticsUpdate() {
  * Создаёт пользовательское меню
  */
 function createCustomMenu_() {
-  const ui = SpreadsheetApp.getUi();
-  
-  ui.createMenu('🔄 Аналитика')
-    .addSubMenu(ui.createMenu('📊 Обновление данных')
-      .addItem('🔄 Синхронизация всех данных', 'syncAllData')
-      .addItem('💼 Только AmoCRM', 'syncAmoCrmDataOnly')
-      .addItem('📋 Только формы сайта', 'syncWebFormsDataOnly')
-      .addItem('☎️ Только колл-трекинг', 'syncCallTrackingDataOnly')
-      .addSeparator()
-      .addItem('🎯 Яндекс.Метрика', 'syncYandexMetricaDataOnly'))
+  try {
+    const ui = SpreadsheetApp.getUi();
     
-    .addSubMenu(ui.createMenu('📈 Аналитические отчёты')
-      .addItem('🏢 Сводка AmoCRM', 'updateAmoCrmSummary')
-      .addItem('❌ Анализ отказов', 'analyzeRefusalReasons')
-      .addItem('🎯 Каналы привлечения', 'analyzeChannelPerformance')
-      .addItem('👥 Лиды по каналам', 'analyzeLeadsByChannels')
-      .addItem('🔗 UTM аналитика', 'analyzeUtmPerformance')
-      .addItem('👋 Первые касания', 'analyzeFirstTouchAttribution')
+    ui.createMenu('🔄 Аналитика')
+      .addSubMenu(ui.createMenu('📊 Обновление данных')
+        .addItem('🔄 Синхронизация всех данных', 'syncAllData')
+        .addItem('💼 Только AmoCRM', 'syncAmoCrmDataOnly')
+        .addItem('📋 Только формы сайта', 'syncWebFormsDataOnly')
+        .addItem('☎️ Только колл-трекинг', 'syncCallTrackingDataOnly')
+        .addSeparator()
+        .addItem('🎯 Яндекс.Метрика', 'syncYandexMetricaDataOnly'))
+      
+      .addSubMenu(ui.createMenu('📈 Аналитические отчёты')
+        .addItem('🏢 Сводка AmoCRM', 'updateAmoCrmSummary')
+        .addItem('❌ Анализ отказов', 'analyzeRefusalReasons')
+        .addItem('🎯 Каналы привлечения', 'analyzeChannelPerformance')
+        .addItem('👥 Лиды по каналам', 'analyzeLeadsByChannels')
+        .addItem('🔗 UTM аналитика', 'analyzeUtmPerformance')
+        .addItem('👋 Первые касания', 'analyzeFirstTouchAttribution')
+        .addSeparator()
+        .addItem('📅 Ежедневная статистика', 'updateDailyStatistics')
+        .addItem('📊 Обновить все отчёты', 'runFullAnalyticsUpdate'))
+      
+      .addSubMenu(ui.createMenu('⚙️ Настройки')
+        .addItem('🎨 Применить оформление', 'applySystemWideFormatting_')
+        .addItem('🔄 Пересоздать триггеры', 'setupTriggers_')
+        .addItem('📧 Тест email уведомлений', 'testEmailNotifications')
+        .addSeparator()
+        .addItem('🗑️ Очистить кэш', 'clearAllCache')
+        .addItem('📋 Показать логи', 'showSystemLogs'))
+      
       .addSeparator()
-      .addItem('📅 Ежедневная статистика', 'updateDailyStatistics')
-      .addItem('📊 Обновить все отчёты', 'runFullAnalyticsUpdate'))
+      .addItem('🚀 Инициализация системы', 'initializeSystem')
+      .addItem('ℹ️ О системе', 'showSystemInfo')
+      .addToUi();
+      
+    logInfo_('MENU', 'Пользовательское меню создано');
     
-    .addSubMenu(ui.createMenu('⚙️ Настройки')
-      .addItem('🎨 Применить оформление', 'applySystemWideFormatting_')
-      .addItem('🔄 Пересоздать триггеры', 'setupTriggers_')
-      .addItem('📧 Тест email уведомлений', 'testEmailNotifications')
-      .addSeparator()
-      .addItem('🗑️ Очистить кэш', 'clearAllCache')
-      .addItem('📋 Показать логи', 'showSystemLogs'))
-    
-    .addSeparator()
-    .addItem('🚀 Инициализация системы', 'initializeSystem')
-    .addItem('ℹ️ О системе', 'showSystemInfo')
-    .addToUi();
+  } catch (uiError) {
+    // UI недоступен (например, вызов из триггера) - пропускаем создание меню
+    logInfo_('MENU', 'UI недоступен для создания меню - пропуск');
+  }
 }
 
 /**
@@ -821,6 +829,99 @@ function renderToWorkingSheet(ss, CFG, header, rows) {
   }
   
   logInfo_('RENDER', `Записано ${rows.length} строк в лист "${CFG.SHEETS.OUT}"`);
+}
+
+/**
+ * Обновление времени в колонке TIME
+ */
+function updateTimeOnlyOnWorking() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const workingSheet = ss.getSheetByName(CONFIG.SHEETS.OUT);
+    
+    if (!workingSheet) {
+      logWarning_('TIME_UPDATE', 'Рабочий лист не найден');
+      return;
+    }
+    
+    const lastRow = workingSheet.getLastRow();
+    if (lastRow <= 1) return;
+    
+    const header = workingSheet.getRange(1, 1, 1, workingSheet.getLastColumn()).getValues()[0];
+    const timeIdx = findColumnIndex(header, ['TIME', 'Время', 'Время обработки']);
+    
+    if (timeIdx > -1) {
+      const currentTime = getCurrentDateMoscow_().toLocaleString();
+      const timeRange = workingSheet.getRange(2, timeIdx + 1, lastRow - 1, 1);
+      const timeValues = Array(lastRow - 1).fill([currentTime]);
+      timeRange.setValues(timeValues);
+      
+      logInfo_('TIME_UPDATE', `Обновлено время в ${lastRow - 1} строках`);
+    }
+  } catch (error) {
+    logError_('TIME_UPDATE', 'Ошибка обновления времени', error);
+  }
+}
+
+/**
+ * Обновление источников колл-трекинга в рабочем листе
+ */
+function updateCalltrackingOnWorking() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const workingSheet = ss.getSheetByName(CONFIG.SHEETS.OUT);
+    const callSheet = ss.getSheetByName(CONFIG.SHEETS.CALL);
+    
+    if (!workingSheet || !callSheet) {
+      logWarning_('CT_UPDATE', 'Рабочий лист или лист колл-трекинга не найден');
+      return;
+    }
+    
+    const lastRow = workingSheet.getLastRow();
+    if (lastRow <= 1) return;
+    
+    // Получаем карту колл-трекинга
+    const callTable = readTable(ss, CONFIG.SHEETS.CALL);
+    const ctMap = buildCalltrackingMap(callTable);
+    
+    if (ctMap.size === 0) return;
+    
+    const header = workingSheet.getRange(1, 1, 1, workingSheet.getLastColumn()).getValues()[0];
+    const phoneIdx = findColumnIndex(header, ['Телефон', 'Phone']);
+    const sourceIdx = findColumnIndex(header, ['Источник ТЕЛ', 'Call Source']);
+    
+    if (phoneIdx === -1 || sourceIdx === -1) return;
+    
+    const data = workingSheet.getRange(2, 1, lastRow - 1, workingSheet.getLastColumn()).getValues();
+    let updated = 0;
+    
+    data.forEach((row, idx) => {
+      const phone = cleanPhone(row[phoneIdx]);
+      if (phone && ctMap.has(phone)) {
+        row[sourceIdx] = ctMap.get(phone);
+        updated++;
+      }
+    });
+    
+    if (updated > 0) {
+      workingSheet.getRange(2, 1, data.length, data[0].length).setValues(data);
+      logInfo_('CT_UPDATE', `Обновлено ${updated} источников колл-трекинга`);
+    }
+    
+  } catch (error) {
+    logError_('CT_UPDATE', 'Ошибка обновления колл-трекинга', error);
+  }
+}
+
+/**
+ * Очистка телефона для сопоставления
+ */
+function cleanPhone(phone) {
+  if (!phone) return '';
+  return String(phone)
+    .replace(/\D/g, '')
+    .replace(/^[78]/, '')
+    .slice(0, 10);
 }
 
 /**
