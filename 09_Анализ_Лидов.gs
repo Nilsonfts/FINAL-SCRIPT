@@ -153,16 +153,16 @@ function analyzeChannelLeadsQuality_(headers, rows) {
     
     // Анализ полноты данных
     let completenessPoints = 0;
-    if (name && name.trim()) completenessPoints++;
-    if (phone && phone.trim()) {
+    if (name && String(name).trim()) completenessPoints++;
+    if (phone && String(phone).trim()) {
       completenessPoints++;
       metrics.phoneProvided++;
     }
-    if (email && email.trim()) {
+    if (email && String(email).trim()) {
       completenessPoints++;
       metrics.emailProvided++;
     }
-    if (company && company.trim()) {
+    if (company && String(company).trim()) {
       completenessPoints++;
       metrics.companyProvided++;
     }

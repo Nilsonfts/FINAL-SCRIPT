@@ -53,6 +53,57 @@ function applyPtSansAllSheets_() {
   }
 }
 
+/**
+ * Универсальная функция форматирования листов аналитики
+ * @param {SpreadsheetApp.Sheet} sheet - Лист для форматирования
+ * @param {string} title - Заголовок отчета
+ */
+function applySheetFormatting_(sheet, title) {
+  if (!sheet) return;
+  
+  try {
+    // Применяем базовый шрифт
+    const dataRange = sheet.getDataRange();
+    if (dataRange.getNumRows() > 0) {
+      dataRange.setFontFamily(CONFIG.DEFAULT_FONT || 'PT Sans');
+      dataRange.setFontSize(10);
+      
+      // Форматируем заголовки (первая строка)
+      if (dataRange.getNumRows() > 0) {
+        const headerRange = sheet.getRange(1, 1, 1, dataRange.getNumColumns());
+        headerRange
+          .setFontWeight('bold')
+          .setFontSize(11)
+          .setBackground(CONFIG.COLORS.HEADER_BG || '#4285f4')
+          .setFontColor(CONFIG.COLORS.HEADER_TEXT || '#ffffff')
+          .setHorizontalAlignment('center')
+          .setVerticalAlignment('middle');
+      }
+      
+      // Автоширина колонок
+      for (let col = 1; col <= dataRange.getNumColumns(); col++) {
+        sheet.autoResizeColumn(col);
+        
+        // Ограничиваем ширину колонок
+        const currentWidth = sheet.getColumnWidth(col);
+        if (currentWidth > 300) {
+          sheet.setColumnWidth(col, 300);
+        } else if (currentWidth < 80) {
+          sheet.setColumnWidth(col, 80);
+        }
+      }
+      
+      // Замораживаем первую строку
+      sheet.setFrozenRows(1);
+    }
+    
+    logDebug_('FORMATTING', `Форматирование применено к листу "${sheet.getName()}"`);
+    
+  } catch (error) {
+    logWarning_('FORMATTING', `Ошибка форматирования листа "${sheet.getName()}"`, error);
+  }
+}
+
 // ===== ЛОГИРОВАНИЕ =====
 
 /**
