@@ -29,17 +29,21 @@ function normalize_(str) {
 /**
  * Находит индекс колонки по алиасам
  * @param {string[]} headerRow - Строка заголовков
- * @param {string[]} aliases - Возможные названия колонки
+ * @param {string[]|string} aliases - Возможные названия колонки или одно название
  * @returns {number} Индекс колонки или -1
  * 
  * @example
  * findHeaderIndex_(['ID', 'Статус', 'Телефон'], ['phone', 'телефон']) // 2
+ * findHeaderIndex_(['ID', 'Статус', 'Телефон'], 'телефон') // 2
  */
 function findHeaderIndex_(headerRow, aliases) {
   if (!headerRow || !aliases) return -1;
   
+  // Преобразуем aliases в массив, если это строка
+  const aliasArray = Array.isArray(aliases) ? aliases : [aliases];
+  
   const normalizedHeader = headerRow.map(h => normalize_(h));
-  const normalizedAliases = aliases.map(a => normalize_(a));
+  const normalizedAliases = aliasArray.map(a => normalize_(a));
   
   for (let i = 0; i < normalizedHeader.length; i++) {
     const header = normalizedHeader[i];
