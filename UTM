@@ -1,0 +1,396 @@
+/**********************************************************
+ * СКВОЗНАЯ АНАЛИТИКА (Site → AMO)
+ * Автор: адаптировано под реальные заголовки пользователя
+ **********************************************************/
+const XCFG = {
+  SHEETS: {
+    RA:   'РАБОЧИЙ АМО',
+    SITE: 'Заявки с Сайта',
+    DASH: 'СКВОЗНАЯ АНАЛИТИКА (Site → AMO)'
+  },
+  FONT: 'PT Sans',
+  // какие статусы считаем успешными
+  SUCCESS_RE: /(оплач|успеш.*в\s*рп|успеш.*реализ)/i,
+  // таймаут привязки события сайта к сделке
+  ATTRIB_WINDOW_DAYS: 30
+};
+
+/* ===================== ПУБЛИЧНО ===================== */
+function buildSiteToAmoDashboard(){
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const site = readSheetFlexible_(ss, XCFG.SHEETS.SITE);
+  const ra   = readRAFlexible_(ss, XCFG.SHEETS.RA);
+
+  if (!site.rows.length) throw new Error('На листе «'+XCFG.SHEETS.SITE+'» нет данных.');
+  if (!ra.rows.length)   throw new Error('На листе «'+XCFG.SHEETS.RA+'» нет данных.');
+
+  // 1) Индексация событий сайта по ID
+  const index = indexSiteEvents_(site);
+
+  // 2) Атрибуция: заявка сайта → сделка AMO
+  const attached = attachDealsToSite_(ra, site, index);
+
+  // 3) Агрегации
+  const kpi = calcKPI_(attached);                      // сводные
+  const bySrcMed   = aggregate_(attached, e => keyJoin_(e.src, e.med));            // source/medium
+  const byCamp     = aggregate_(attached, e => keyJoin_(e.src, e.cmp));            // source|campaign
+  const byTerm     = aggregate_(attached, e => cleanKey_(e.term||''));             // utm_term
+  const byLanding  = aggregate_(attached, e => cleanKey_(e.landing||''));          // landing_page
+  const byButton   = aggregate_(attached, e => cleanKey_(e.btn||''));              // button_text
+
+  // 4) Рендер дашборда
+  drawDashboard_(ss, {kpi, bySrcMed, byCamp, byTerm, byLanding, byButton, siteEvents:site.rows.length});
+}
+
+/* ежечасный триггер */
+function setHourlyTrigger_Site2Amo(){
+  ScriptApp.getProjectTriggers().forEach(t=>{
+    if (t.getHandlerFunction()==='buildSiteToAmoDashboard') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('buildSiteToAmoDashboard').timeBased().everyHours(1).create();
+}
+
+/* ===================== ЧТЕНИЕ ДАННЫХ ===================== */
+
+// Гибкое чтение «Заявки с Сайта»
+function readSheetFlexible_(ss, name){
+  const sh = ss.getSheetByName(name);
+  if (!sh) throw new Error('Нет листа «'+name+'».');
+  const vals = sh.getDataRange().getValues();
+  const header = (vals[0]||[]).map(String);
+  const rows = vals.slice(1).filter(r=>r.some(x=>String(x).trim()!==''));
+
+  const idx = {
+    // utm
+    src: idxOf_(header, ['utm_source','UTM_SOURCE','source']),
+    med: idxOf_(header, ['utm_medium','UTM_MEDIUM','medium']),
+    cmp: idxOf_(header, ['utm_campaign','UTM_CAMPAIGN','campaign','utm_campa ign']),
+    term: idxOf_(header, ['utm_term','UTM_TERM']),
+    cont: idxOf_(header, ['utm_content','UTM_CONTENT']),
+    // id
+    ym: idxOf_(header, ['ym_client_id','YM_CLIENT_ID']),
+    ga: idxOf_(header, ['ga_client_id','GA_CLIENT_ID']),
+    phone: idxOf_(header, ['phone','Телефон']),
+    // поведение/страницы
+    btn: idxOf_(header, ['button_text','BUTTON_TEXT','Кнопка']),
+    ref: idxOf_(header, ['referrer','REFERER','utm_referrer']),
+    land: idxOf_(header, ['landing_page','LANDING_PAGE','page']),
+    // время
+    date: idxOf_(header, ['date','DATE']),
+    time: idxOf_(header, ['time','TIME']),
+    ts:   idxOf_(header, ['timestamp','TIMESTAMP'])
+  };
+
+  return {header, rows, idx};
+}
+
+// Чтение «РАБОЧИЙ АМО» (шапка обычно на 2-й строке)
+function readRAFlexible_(ss, name){
+  const sh = ss.getSheetByName(name);
+  if (!sh) throw new Error('Нет листа «'+name+'».');
+
+  // определяем строку заголовка
+  const peek = sh.getRange(1,1,Math.min(5, sh.getLastRow()), Math.min(200, sh.getLastColumn())).getValues();
+  let headerRow = 2;
+  for (let r=0;r<peek.length;r++){
+    const row = peek[r].map(String);
+    if (row.includes('ID') && (row.includes('Статус') || row.includes('Дата создания'))) { headerRow = r+1; break; }
+  }
+
+  const lastRow = sh.getLastRow(), lastCol = sh.getLastColumn();
+  const header = sh.getRange(headerRow,1,1,lastCol).getValues()[0].map(String);
+  const rows   = sh.getRange(headerRow+1,1,lastRow-headerRow,lastCol).getValues()
+                 .filter(r=>r.some(x=>String(x).trim()!==''));
+
+  // индексы
+  const idx = {
+    status: idxOf_(header, ['Статус','Сделка.Статус']),
+    budget: idxOf_(header, ['Бюджет','Сделка.Бюджет']),
+    phone:  idxOf_(header, ['Телефон','Контакт.Телефон','Phone']),
+    ym:     idxOf_(header, ['YM_CLIENT_ID','ym_client_id']),
+    ga:     idxOf_(header, ['GA_CLIENT_ID','ga_client_id']),
+    formid: idxOf_(header, ['FORMID','formid']),
+    refer:  idxOf_(header, ['REFERER','referer']),
+    date:   idxOf_(header, ['DATE','Дата создания','Сделка.DATE']),
+    time:   idxOf_(header, ['TIME','Время прихода']),
+  };
+
+  // последняя «Сумма ₽» (AX/…)
+  let ax = -1;
+  header.forEach((h,i)=>{ if (/сумма\s*₽/i.test(String(h))) ax = i; });
+  idx.ax = ax;
+
+  return {header, rows, idx};
+}
+
+/* ===================== АТРИБУЦИЯ ===================== */
+
+function indexSiteEvents_(site){
+  const ymMap = new Map();
+  const gaMap = new Map();
+  const phMap = new Map();
+
+  for (const r of site.rows){
+    const ev = siteEventFromRow_(r, site.idx);
+    if (!ev) continue;
+
+    if (ev.ym) pushMapList_(ymMap, ev.ym, ev);
+    if (ev.ga) pushMapList_(gaMap, ev.ga, ev);
+    if (ev.phone) pushMapList_(phMap, ev.phone, ev);
+  }
+  return {ymMap, gaMap, phMap};
+}
+
+function siteEventFromRow_(r, i){
+  const ts = eventTime_(r[i.ts], r[i.date], r[i.time]);
+  if (!ts) return null;
+
+  const ev = {
+    ts,
+    ym: cleanId_(r[i.ym]),
+    ga: cleanId_(r[i.ga]),
+    phone: cleanPhone_(r[i.phone]),
+    src: asStr_(r[i.src]),
+    med: asStr_(r[i.med]),
+    cmp: asStr_(r[i.cmp]),
+    term: asStr_(r[i.term]),
+    cont: asStr_(r[i.cont]),
+    btn: asStr_(r[i.btn]),
+    ref: asStr_(r[i.ref]),
+    landing: asStr_(r[i.land])
+  };
+  return ev;
+}
+
+function attachDealsToSite_(ra, site, index){
+  const out = [];
+  const wnd = XCFG.ATTRIB_WINDOW_DAYS * 86400000;
+
+  for (const r of ra.rows){
+    const created = eventTime_(null, r[ra.idx.date], r[ra.idx.time]) || new Date();
+    const st = normalizeStatus_(r[ra.idx.status]);
+    const ok = XCFG.SUCCESS_RE.test(st);
+
+    const ym = cleanId_(r[ra.idx.ym]);
+    const ga = cleanId_(r[ra.idx.ga]);
+    const ph = cleanPhone_(r[ra.idx.phone]);
+
+    let ev = null;
+    // цепочка сопоставления: YM → GA → PHONE → ближайшее по времени
+    if (ym) ev = pickClosestBefore_(index.ymMap.get(ym), created, wnd) || null;
+    if (!ev && ga) ev = pickClosestBefore_(index.gaMap.get(ga), created, wnd) || null;
+    if (!ev && ph) ev = pickClosestBefore_(index.phMap.get(ph), created, wnd) || null;
+    if (!ev) ev = null; // без атрибуции
+
+    // доход
+    const income = ok ? revenueFromRA_(r, ra.idx) : 0;
+
+    out.push({
+      ok,
+      income,
+      created,
+      src:   ev ? ev.src   : '',
+      med:   ev ? ev.med   : '',
+      cmp:   ev ? ev.cmp   : '',
+      term:  ev ? ev.term  : '',
+      cont:  ev ? ev.cont  : '',
+      btn:   ev ? ev.btn   : '',
+      ref:   ev ? ev.ref   : '',
+      landing: ev ? ev.landing : '',
+      hasAttr: !!ev
+    });
+  }
+  return out;
+}
+
+function pickClosestBefore_(list, pivot, wnd){
+  if (!list || !list.length) return null;
+  let best = null, bestDt = -1;
+  for (const ev of list){
+    const dt = pivot - ev.ts;
+    if (dt>=0 && dt<=wnd){
+      if (best===null || dt < bestDt){ best = ev; bestDt = dt; }
+    }
+  }
+  return best;
+}
+
+/* ===================== АГРЕГАЦИИ ===================== */
+
+function calcKPI_(items){
+  const totalSiteToAmo = items.filter(x=>x.hasAttr).length;
+  const succ = items.filter(x=>x.hasAttr && x.ok);
+  const revenue = succ.reduce((s,x)=>s+x.income,0);
+  const avg = succ.length ? revenue/succ.length : 0;
+  const conv = totalSiteToAmo ? (succ.length/totalSiteToAmo) : 0;
+  return { attached: totalSiteToAmo, succ: succ.length, revenue, avg, conv };
+}
+
+function aggregate_(items, keyFn){
+  const map = new Map();
+  for (const it of items){
+    if (!it.hasAttr) continue;
+    const k = cleanKey_(keyFn(it));
+    const b = map.get(k) || {key:k, leads:0, succ:0, revenue:0};
+    b.leads += 1;
+    if (it.ok){ b.succ += 1; b.revenue += it.income; }
+    map.set(k,b);
+  }
+  // расчёт чек/конверсия + сортировка по доходу
+  const arr = [...map.values()].map(b=>({
+    key: b.key || '(не указано)',
+    deals: b.leads,
+    success: b.succ,
+    income: b.revenue,
+    avg: b.succ ? b.revenue/b.succ : 0,
+    conv: b.leads ? b.succ/b.leads : 0
+  })).sort((a,b)=>b.income-a.income);
+  return arr;
+}
+
+/* ===================== РЕНДЕР ===================== */
+
+function drawDashboard_(ss, data){
+  const sh = ss.getSheetByName(XCFG.SHEETS.DASH) || ss.insertSheet(XCFG.SHEETS.DASH);
+  sh.clear();
+
+  // общая сетка/шрифт
+  ensureSize_(sh, 200, 12);
+  sh.getRange(1,1,sh.getMaxRows(),sh.getMaxColumns()).setFontFamily(XCFG.FONT);
+
+  // шапка
+  band_(sh,1,1,1,12,'#123E6B');
+  sh.getRange(1,1,1,12).merge().setValue('🔗 СКВОЗНАЯ АНАЛИТИКА (Site → AMO)')
+    .setFontColor('#fff').setFontSize(18).setFontWeight('bold').setVerticalAlignment('middle');
+
+  sh.getRange(2,1,1,2).setValues([['Последнее обновление:', new Date()]])
+    .setNumberFormats([['@','dd.MM.yyyy, HH:mm:ss']]);
+
+  let r = 5;
+
+  // KPI
+  section_(sh,r,1,'✅ КЛЮЧЕВЫЕ ПОКАЗАТЕЛИ','#DCEFD2'); r++;
+  const kHead = ['Метрика','Значение','Комментарий'];
+  const kBody = [
+    ['Сайт-форм (events)', data.siteEvents, 'Исходные отправки с сайта'],
+    ['Сделок с атрибуцией', data.kpi.attached, 'Матчи по YM/GA/Телефон/Время'],
+    ['Успешных сделок', data.kpi.succ, 'Оплачено/Успешно в РП/Успешно реализовано'],
+    ['Доход ₽', data.kpi.revenue, 'AX, если 0 → Бюджет'],
+    ['Средний чек ₽', data.kpi.avg, 'Доход / Успешные'],
+    ['Конверсия сайт → успех', data.kpi.conv, 'Успешные / Сделки с атрибуцией']
+  ];
+  writeTable_(sh, r, 1, kHead, kBody);
+  sh.getRange(r+1,2, kBody.length,1).setNumberFormats([['0'],['0'],['0'],['# ##0'],['# ##0'],['0.00%']]);
+  r += kBody.length + 3;
+
+  // Топ источников (source/medium)
+  section_(sh,r,1,'📈 ТОП ИСТОЧНИКОВ (source/medium)','#EAF2FF'); r++;
+  drawAgg_(sh, r, 1, data.bySrcMed); r += data.bySrcMed.length + 3;
+
+  // Топ кампаний (source|campaign)
+  section_(sh,r,1,'📊 ТОП КАМПАНИЙ (source | campaign)','#EAF2FF'); r++;
+  drawAgg_(sh, r, 1, data.byCamp); r += data.byCamp.length + 3;
+
+  // Ключевые слова
+  section_(sh,r,1,'🔑 КЛЮЧЕВЫЕ СЛОВА (utm_term)','#FFF3D6'); r++;
+  drawAgg_(sh, r, 1, data.byTerm); r += data.byTerm.length + 3;
+
+  // Посадочные
+  section_(sh,r,1,'📍 ПОСАДОЧНЫЕ СТРАНИЦЫ','#FFF3D6'); r++;
+  drawAgg_(sh, r, 1, data.byLanding); r += data.byLanding.length + 3;
+
+  // Кнопки
+  section_(sh,r,1,'🟡 КНОПКИ (button_text)','#FFF3D6'); r++;
+  drawAgg_(sh, r, 1, data.byButton); r += data.byButton.length + 3;
+
+  autoResize_(sh);
+}
+
+function drawAgg_(sh, r, c, arr){
+  const head = ['Ключ','Сделки','Успешные','Доход ₽','Ср. чек ₽','Конверсия'];
+  writeTable_(sh, r, c, head, arr.map(x=>[x.key, x.deals, x.success, x.income, x.avg, x.conv]));
+  const n = Math.max(1, arr.length);
+  sh.getRange(r+1,c+1,n,1).setNumberFormat('0');
+  sh.getRange(r+1,c+2,n,1).setNumberFormat('0');
+  sh.getRange(r+1,c+3,n,1).setNumberFormat('# ##0');
+  sh.getRange(r+1,c+4,n,1).setNumberFormat('# ##0');
+  sh.getRange(r+1,c+5,n,1).setNumberFormat('0.00%');
+}
+
+/* ===================== УТИЛИТЫ ===================== */
+
+function idxOf_(header, names){
+  const norm = header.map(h=>String(h||'').trim().toLowerCase());
+  for (const nm of names){
+    const q = String(nm).trim().toLowerCase();
+    let i = norm.indexOf(q);
+    if (i>-1) return i;
+    i = norm.findIndex(h => h===q || h.replace(/\s+/g,'')===q.replace(/\s+/g,''));
+    if (i>-1) return i;
+  }
+  return -1;
+}
+
+function eventTime_(ts, d, t){
+  if (ts instanceof Date && !isNaN(ts)) return ts;
+  const date = (d instanceof Date) ? d : (d ? new Date(d) : null);
+  let time = null;
+  if (t instanceof Date) time = t;
+  else if (typeof t === 'string' && /\d{1,2}:\d{2}/.test(t)){
+    const [hh,mm] = t.split(':').map(n=>+n);
+    time = new Date(2000,0,1,hh||0,mm||0,0);
+  }
+  if (date){
+    const dt = new Date(date);
+    if (time){
+      dt.setHours(time.getHours()||0, time.getMinutes()||0, 0, 0);
+    }
+    return dt;
+  }
+  return null;
+}
+
+function revenueFromRA_(row, idx){
+  const ax = num_(row[idx.ax]);
+  if (ax>0) return ax;
+  return num_(row[idx.budget]);
+}
+
+function normalizeStatus_(s){
+  s = asStr_(s).replace(/^\s*все\s*бары\s*сети\s*(?:[\/\\|:\-–—]\s*)?/i,'')
+               .replace(/\s*(?:-|–|—)\s*.*$/,'').trim();
+  return s;
+}
+
+function asStr_(v){ return v==null ? '' : String(v).trim(); }
+function num_(v){ const n = Number(String(v||'').replace(/\s/g,'').replace(',','.')); return isNaN(n)?0:n; }
+function cleanId_(v){ const s = String(v||'').trim(); return s ? s : ''; }
+function cleanPhone_(v){
+  const d = String(v||'').replace(/\D/g,'');
+  if (!d) return '';
+  if (d.length===11 && /^[78]/.test(d)) return d.slice(1);
+  if (d.length>=10) return d.slice(-10);
+  return d;
+}
+function keyJoin_(a,b){ return [cleanKey_(a), cleanKey_(b||'(none)')].join(' | '); }
+function cleanKey_(x){ x = asStr_(x); return x || '(none)'; }
+
+function pushMapList_(m, k, v){ if(!k) return; const a = m.get(k)||[]; a.push(v); m.set(k,a); }
+
+// оформление
+function section_(sh, r, c, title, bg){
+  band_(sh,r,c,1,12,bg);
+  sh.getRange(r,c,1,12).merge().setValue(title).setFontWeight('bold');
+}
+function band_(sh,r,c,rows,cols,bg){ ensureSize_(sh,r+rows-1,c+cols-1); sh.getRange(r,c,rows,cols).setBackground(bg); }
+function writeTable_(sh, r, c, head, body){
+  ensureSize_(sh, r + Math.max(1, body.length), c + head.length - 1);
+  sh.getRange(r,c,1,head.length).setValues([head]).setFontWeight('bold').setBackground('#EEF4FB');
+  if (body.length) sh.getRange(r+1,c,body.length,head.length).setValues(body.map(row=>row.map(x => (x===undefined||x===null)?'':x)));
+  sh.getRange(r,c,Math.max(1,body.length+1),head.length).setBorder(true,true,true,true,true,true);
+}
+function ensureSize_(sh, needR, needC){
+  if (sh.getMaxRows()<needR) sh.insertRowsAfter(sh.getMaxRows(), needR - sh.getMaxRows());
+  if (sh.getMaxColumns()<needC) sh.insertColumnsAfter(sh.getMaxColumns(), needC - sh.getMaxColumns());
+}
+function autoResize_(sh){ const cols = sh.getLastColumn(); for (let i=1;i<=cols;i++) try{ sh.autoResizeColumn(i); }catch(e){} }
