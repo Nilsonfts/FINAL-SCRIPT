@@ -161,33 +161,63 @@ function createChart_(sheet, chartType, data, options = {}) {
     
     // Записываем данные в лист
     sheet.getRange(startRow, startCol, data.length, data[0].length).setValues(data);
-    const dataRange = sheet.getRange(startRow, startCol, data.length, data[0].length);
     
-    // Создаём диаграмму в зависимости от типа
-    let chartBuilder;
+    // Создаём диаграмму используя правильный API
+    let chart;
+    const dataRange = sheet.getRange(startRow, startCol, data.length, data[0].length);
     
     switch (chartType.toLowerCase()) {
       case 'pie':
-        chartBuilder = Charts.newPieChart()
-          .addRange(dataRange)
-          .setOption('legend', { position: legend });
+        chart = sheet.insertChart(
+          sheet.newChart()
+            .setChartType(Charts.ChartType.PIE)
+            .addRange(dataRange)
+            .setOption('title', title)
+            .setOption('titleTextStyle', { fontSize: 14, bold: true })
+            .setOption('legend', { position: legend })
+            .setOption('chartArea', { width: '80%', height: '80%' })
+            .setPosition(position.row, position.col, 0, 0)
+            .setOption('width', width)
+            .setOption('height', height)
+            .build()
+        );
         break;
         
       case 'column':
-        chartBuilder = Charts.newColumnChart()
-          .addRange(dataRange)
-          .setOption('legend', { position: legend })
-          .setOption('hAxis', { title: hAxisTitle })
-          .setOption('vAxis', { title: vAxisTitle });
+        chart = sheet.insertChart(
+          sheet.newChart()
+            .setChartType(Charts.ChartType.COLUMN)
+            .addRange(dataRange)
+            .setOption('title', title)
+            .setOption('titleTextStyle', { fontSize: 14, bold: true })
+            .setOption('legend', { position: legend })
+            .setOption('hAxis', { title: hAxisTitle })
+            .setOption('vAxis', { title: vAxisTitle })
+            .setOption('chartArea', { width: '80%', height: '80%' })
+            .setPosition(position.row, position.col, 0, 0)
+            .setOption('width', width)
+            .setOption('height', height)
+            .build()
+        );
         break;
         
       case 'line':
-        chartBuilder = Charts.newLineChart()
-          .addRange(dataRange)
-          .setOption('legend', { position: legend })
-          .setOption('hAxis', { title: hAxisTitle })
-          .setOption('vAxis', { title: vAxisTitle })
-          .setOption('curveType', 'function');
+        chart = sheet.insertChart(
+          sheet.newChart()
+            .setChartType(Charts.ChartType.LINE)
+            .addRange(dataRange)
+            .setOption('title', title)
+            .setOption('titleTextStyle', { fontSize: 14, bold: true })
+            .setOption('legend', { position: legend })
+            .setOption('hAxis', { title: hAxisTitle })
+            .setOption('vAxis', { title: vAxisTitle })
+            .setOption('curveType', 'function')
+            .setOption('chartArea', { width: '80%', height: '80%' })
+            .setPosition(position.row, position.col, 0, 0)
+            .setOption('width', width)
+            .setOption('height', height)
+            .build()
+        );
         break;
         
       default:
@@ -195,17 +225,6 @@ function createChart_(sheet, chartType, data, options = {}) {
         return null;
     }
     
-    // Применяем общие настройки
-    const chart = chartBuilder
-      .setOption('title', title)
-      .setOption('titleTextStyle', { fontSize: 14, bold: true })
-      .setOption('chartArea', { width: '80%', height: '80%' })
-      .setPosition(position.row, position.col, 0, 0)
-      .setOption('width', width)
-      .setOption('height', height)
-      .build();
-    
-    sheet.insertChart(chart);
     logDebug_('CHARTS', `Диаграмма "${title}" создана в листе "${sheet.getName()}"`);
     return chart;
     
@@ -242,6 +261,209 @@ function logError_(module, message, details = null) {
   } catch (e) {
     // Fallback если console недоступен
   }
+}
+
+function logDebug_(module, message, details = null) {
+  if (CONFIG?.DEBUG?.enabled && CONFIG?.DEBUG?.log_level === 'DEBUG') {
+    try {
+      console.log(`[DEBUG] ${module}: ${message}`, details || '');
+    } catch (e) {
+      // Fallback если console недоступен
+    }
+  }
+}
+
+// ===== ФУНКЦИИ ДАТЫ И ВРЕМЕНИ =====
+
+/**
+ * Получить текущую дату по московскому времени
+ * @returns {Date} Дата в московском часовом поясе
+ */
+function getCurrentDateMoscow_() {
+  try {
+    const now = new Date();
+    // Смещение для московского времени (UTC+3)
+    const moscowOffset = 3 * 60 * 60 * 1000; // 3 часа в миллисекундах
+    const utc = now.getTime() + (now.getTimezoneOffset() * 60 * 1000);
+    return new Date(utc + moscowOffset);
+  } catch (error) {
+    logWarning_('DATE', 'Ошибка получения московского времени, использую локальное', error);
+    return new Date();
+  }
+}
+
+/**
+ * Форматирует дату и время для отображения
+ * @param {Date} date - Дата для форматирования
+ * @param {string} format - Формат строки (по умолчанию 'dd.MM.yyyy HH:mm')
+ * @returns {string} Отформатированная дата
+ */
+function formatDateTime_(date, format = 'dd.MM.yyyy HH:mm') {
+  try {
+    if (!date || !(date instanceof Date)) {
+      return '';
+    }
+    
+    return Utilities.formatDate(date, CONFIG.TIMEZONE || 'Europe/Moscow', format);
+  } catch (error) {
+    logWarning_('DATE', 'Ошибка форматирования даты, использую стандартное представление', error);
+    try {
+      return date.toLocaleString('ru-RU');
+    } catch (e) {
+      return date.toString();
+    }
+  }
+}
+
+/**
+ * Парсит дату из различных форматов
+ * @param {*} dateInput - Входное значение даты
+ * @returns {Date|null} Parsed date or null
+ */
+function parseDate_(dateInput) {
+  if (!dateInput) return null;
+  if (dateInput instanceof Date) return dateInput;
+  
+  try {
+    const parsed = new Date(dateInput);
+    return isNaN(parsed.getTime()) ? null : parsed;
+  } catch (error) {
+    logWarning_('DATE', `Не удалось парсить дату: ${dateInput}`, error);
+    return null;
+  }
+}
+
+/**
+ * Получить название месяца на русском языке
+ * @param {number} monthIndex - Индекс месяца (0-11)
+ * @returns {string} Название месяца
+ */
+function getMonthName_(monthIndex) {
+  const months = [
+    'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+    'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'
+  ];
+  return months[monthIndex] || 'Неизвестно';
+}
+
+// ===== ДОПОЛНИТЕЛЬНЫЕ УТИЛИТЫ ДЛЯ АНАЛИТИКИ =====
+
+/**
+ * Форматирует валюту для отображения
+ * @param {number} amount - Сумма для форматирования
+ * @returns {string} Отформатированная сумма
+ */
+function formatCurrency_(amount) {
+  try {
+    if (!amount || amount === 0) return '0 ₽';
+    
+    const formatted = new Intl.NumberFormat('ru-RU', {
+      style: 'currency',
+      currency: 'RUB',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount);
+    
+    return formatted;
+  } catch (error) {
+    return `${Math.round(amount || 0)} ₽`;
+  }
+}
+
+/**
+ * Очищает лист, оставляя только первую строку
+ * @param {SpreadsheetApp.Sheet} sheet - Лист для очистки
+ */
+function clearSheetData_(sheet) {
+  try {
+    if (!sheet) return;
+    
+    const lastRow = sheet.getLastRow();
+    const lastCol = sheet.getLastColumn();
+    
+    if (lastRow > 1) {
+      sheet.getRange(2, 1, lastRow - 1, lastCol).clear();
+    }
+    
+    // Удаляем все диаграммы
+    const charts = sheet.getCharts();
+    charts.forEach(chart => sheet.removeChart(chart));
+    
+    logDebug_('SHEET', `Лист "${sheet.getName()}" очищен`);
+    
+  } catch (error) {
+    logWarning_('SHEET', `Ошибка очистки листа "${sheet.getName()}"`, error);
+  }
+}
+
+/**
+ * Применяет стиль заголовка к диапазону
+ * @param {SpreadsheetApp.Range} range - Диапазон для стилизации
+ */
+function applyHeaderStyle_(range) {
+  try {
+    if (!range) return;
+    
+    range
+      .setBackground(CONFIG?.COLORS?.HEADER_BG || '#4285f4')
+      .setFontColor(CONFIG?.COLORS?.HEADER_TEXT || '#ffffff')
+      .setFontWeight('bold')
+      .setFontSize(12)
+      .setHorizontalAlignment('center')
+      .setVerticalAlignment('middle');
+      
+  } catch (error) {
+    logWarning_('STYLE', 'Ошибка применения стиля заголовка', error);
+  }
+}
+
+/**
+ * Применяет стиль подзаголовка к диапазону
+ * @param {SpreadsheetApp.Range} range - Диапазон для стилизации
+ */
+function applySubheaderStyle_(range) {
+  try {
+    if (!range) return;
+    
+    range
+      .setBackground(CONFIG?.COLORS?.SUBHEADER_BG || '#f1f3f4')
+      .setFontColor(CONFIG?.COLORS?.SUBHEADER_TEXT || '#202124')
+      .setFontWeight('bold')
+      .setFontSize(11)
+      .setHorizontalAlignment('center')
+      .setVerticalAlignment('middle');
+      
+  } catch (error) {
+    logWarning_('STYLE', 'Ошибка применения стиля подзаголовка', error);
+  }
+}
+
+/**
+ * Применяет базовый стиль данных к диапазону
+ * @param {SpreadsheetApp.Range} range - Диапазон для стилизации
+ */
+function applyDataStyle_(range) {
+  try {
+    if (!range) return;
+    
+    range
+      .setFontFamily(CONFIG?.DEFAULT_FONT || 'PT Sans')
+      .setFontSize(10)
+      .setVerticalAlignment('middle');
+      
+  } catch (error) {
+    logWarning_('STYLE', 'Ошибка применения стиля данных', error);
+  }
+}
+
+/**
+ * Валидирует наличие API ключа
+ */
+function validateApiKey() {
+  if (!CONFIG?.API_KEY) {
+    throw new Error('API ключ OpenAI не найден. Установите OPENAI_API_KEY в Свойствах проекта.');
+  }
+  return true;
 }
 
 // ===== ЧТЕНИЕ И ОБРАБОТКА ДАННЫХ =====
