@@ -454,7 +454,7 @@ function processWebFormsData_() {
   let totalRecords = 0;
   
   try {
-    const formsSheet = spreadsheet.getSheetByName(CONFIG.SHEETS.SITE);
+    const formsSheet = spreadsheet.getSheetByName('Заявки с Сайта');
     
     if (!formsSheet || formsSheet.getLastRow() <= 1) {
       return {
@@ -494,7 +494,7 @@ function processCallTrackingData_() {
   let totalRecords = 0;
   
   try {
-    const callsSheet = spreadsheet.getSheetByName(CONFIG.SHEETS.CALL);
+    const callsSheet = spreadsheet.getSheetByName('КоллТрекинг');
     
     if (!callsSheet || callsSheet.getLastRow() <= 1) {
       return {

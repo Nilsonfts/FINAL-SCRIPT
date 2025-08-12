@@ -10,6 +10,26 @@ const CONFIG = {
   TIMEZONE: 'Europe/Moscow',
   FONT: 'PT Sans',
   
+  // ===== ЦВЕТОВАЯ СХЕМА =====
+  COLORS: {
+    HEADER_BG: '#4285f4',
+    HEADER_TEXT: '#ffffff',
+    SUBHEADER_BG: '#f1f3f4',
+    SUBHEADER_TEXT: '#202124',
+    SUCCESS_LIGHT: '#d4edda',
+    ERROR_LIGHT: '#f8d7da',
+    WARNING_LIGHT: '#fff3cd',
+    DATA_BG: '#ffffff'
+  },
+  
+  // ===== УВЕДОМЛЕНИЯ EMAIL =====
+  EMAIL_NOTIFICATIONS: {
+    RECIPIENTS: [] // Добавьте email адреса при необходимости
+  },
+  
+  // ===== ГЛОБАЛЬНЫЕ НАСТРОЙКИ ДАННЫХ =====
+  RAW_DATA: 'РАБОЧИЙ АМО', // Основной источник данных для всех модулей
+  
   // ===== ОСНОВНОЙ СКРИПТ СБОРА ДАННЫХ =====
   mainScript: {
     // ===== ОСНОВНЫЕ ЛИСТЫ ДАННЫХ =====
@@ -26,6 +46,7 @@ const CONFIG = {
     
     // Рабочие листы системы
     OUT: 'РАБОЧИЙ АМО',                   // Основной рабочий лист с объединёнными данными
+    RAW_DATA: 'РАБОЧИЙ АМО',              // Алиас для аналитических модулей
     
     // Аналитические отчёты
     REFUSAL_ANALYSIS: 'Причина отказов',
