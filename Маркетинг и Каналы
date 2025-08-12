@@ -1,0 +1,400 @@
+/**********************************************************
+ * 📊 МАРКЕТИНГ И КАНАЛЫ — сводный отчёт
+ * Источник:  лист "РАБОЧИЙ АМО"
+ * Бюджеты:   лист "БЮДЖЕТЫ" (или "ЗАТРАТЫ МАРКЕТИНГ", autodetect)
+ * Шрифт:     PT Sans
+ * Успех:     Оплачено / Успешно в РП / Успешно реализовано
+ * Доход:     AX (последний "Сумма ₽"), если 0 → "Бюджет"
+ **********************************************************/
+const MKT = {
+  RA_SHEET: 'РАБОЧИЙ АМО',
+  OUT_SHEET: 'МАРКЕТИНГ И КАНАЛЫ',
+  COST_SHEET_NAMES: ['БЮДЖЕТЫ', 'ЗАТРАТЫ МАРКЕТИНГ', 'Маркетинг: бюджеты'],
+  FONT: 'PT Sans',
+  SUCCESS_NAMES: ['Оплачено','Успешно в РП','Успешно реализовано'],
+  // какие колонки ищем в "РАБОЧИЙ АМО"
+  HEADERS: {
+    CREATED: ['Дата создания'],
+    CLOSED:  ['Дата закрытия'],                 // опционально
+    STATUS:  ['Статус','Сделка.Статус'],
+    BUDGET:  ['Бюджет','Сделка.Бюджет'],
+    TELTAG:  ['R.Источник ТЕЛ сделки','Источник ТЕЛ сделки','R.Источник ТЕЛ'],
+    UTM_SOURCE: ['UTM_SOURCE','utm_source'],
+    LAST_FORM: ['Последняя заявка','Site.Последняя заявка'], // для direct_site
+    FORMID:  ['FORMID','Сделка.FORMID'],
+    FORMNAME:['FORMNAME','Сделка.FORMNAME'],
+    REFERER: ['REFERER','Сделка.REFERER'],
+    DATE:    ['DATE','Сделка.DATE'],            // как факт события
+    // AX — берём последнюю колонку "Сумма ₽"
+    SUM_TITLE_RE: /сумма\s*₽/i
+  }
+};
+
+/* ======================== ПУБЛИЧНО ======================== */
+function buildMarketingChannels(){
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // 1) Читаем источник (РАБОЧИЙ АМО)
+  const src = readRA_(ss);
+
+  // 2) Агрегация по каналам и по месяцам
+  const byChannel = new Map();       // ch -> {leads, succ, revenue}
+  const byMonthCh = new Map();       // key ch|YYYY-MM -> {leads, succ, revenue}
+  let totalLeads = 0, totalSucc = 0, totalRevenue = 0;
+
+  src.rows.forEach(r=>{
+    const created = r[src.iCreated] || r[src.iDate] || '';
+    if (!created) return;
+
+    totalLeads++;
+    const status = normalizeStatus_(r[src.iStatus]);
+    const ok = MKT.SUCCESS_NAMES.includes(status);
+
+    const ch = pickChannel_(r, src);                 // канал
+    const bucket = byChannel.get(ch) || {leads:0, succ:0, revenue:0};
+    bucket.leads++;
+
+    let rev = 0;
+    if (ok) {
+      const ax = toNum_(r[src.iAX]);
+      rev = ax>0 ? ax : toNum_(r[src.iBudget]);
+      bucket.succ++;
+      bucket.revenue += rev;
+      totalSucc++;
+      totalRevenue += rev;
+    }
+    byChannel.set(ch, bucket);
+
+    // помесячная детализация
+    const k = monthKey_(created);
+    const mk = ch + '|' + k.key;
+    const b2 = byMonthCh.get(mk) || {leads:0, succ:0, revenue:0, label:k.label, order:k.key, ch:ch};
+    b2.leads++;
+    if (ok){ b2.succ++; b2.revenue += rev; }
+    byMonthCh.set(mk, b2);
+  });
+
+  // 3) Читаем бюджеты (общие и помесячные)
+  const costs = readCosts_(ss); // {totalByChannel, monthByChannel}
+
+  // 4) Готовим итоговую таблицу по каналам
+  const channels = [...byChannel.entries()].map(([ch,v])=>{
+    const cost = costs.totalByChannel.get(ch) || 0;
+    const avg  = v.succ ? (v.revenue / v.succ) : 0;
+    const conv = v.leads ? (v.succ / v.leads) : 0;
+    const cac  = (v.succ>0 && cost>0) ? (cost / v.succ) : 0;
+    const romi = (cost>0) ? ((v.revenue - cost) / cost) : 0;
+    const roi  = romi; // для маркетинга равны
+    return {
+      ch, leads:v.leads, succ:v.succ, revenue:v.revenue, cost,
+      cac, romi, roi, avg, conv
+    };
+  }).sort((a,b)=>b.revenue-a.revenue);
+
+  // 5) Помесячная таблица (если есть бюджеты по месяцам или просто сделки)
+  const months = [...byMonthCh.values()].sort((a,b)=> a.order.localeCompare(b.order));
+  const monthsRows = months.map(m=>{
+    const cost = costs.monthByChannel.get(m.ch+'|'+m.order) || 0;
+    const avg  = m.succ ? (m.revenue/m.succ) : 0;
+    const conv = m.leads ? (m.succ/m.leads) : 0;
+    const cac  = (m.succ>0 && cost>0) ? (cost/m.succ) : 0;
+    const romi = (cost>0) ? ((m.revenue - cost)/cost) : 0;
+    return [m.label, m.ch, m.leads, m.succ, m.revenue, cost, cac, romi, avg, conv];
+  });
+
+  // 6) Рендер
+  const sh = ss.getSheetByName(MKT.OUT_SHEET) || ss.insertSheet(MKT.OUT_SHEET);
+  sh.clear();
+  setFontAll_(sh, MKT.FONT);
+
+  let row = 1, col = 1;
+
+  // Шапка
+  band_(sh,row,col,1,14,'#153E5C');
+  sh.getRange(row,col,1,14).merge()
+    .setValue('📊 МАРКЕТИНГ И КАНАЛЫ')
+    .setFontColor('#ffffff').setFontWeight('bold').setFontSize(18)
+    .setHorizontalAlignment('left').setVerticalAlignment('middle');
+  row += 1;
+
+  // Последнее обновление
+  sh.getRange(row,col).setValue('Последнее обновление:').setFontWeight('bold');
+  sh.getRange(row,col+1).setValue(new Date()).setNumberFormat('dd.MM.yyyy, HH:mm:ss');
+  row += 2;
+
+  // Ключевые показатели
+  section_(sh,row,col,'✅ КЛЮЧЕВЫЕ ПОКАЗАТЕЛИ',10,'#D8EAC6'); row++;
+  writeTable_(sh,row,col,
+    ['Метрика','Значение','Комментарий'],
+    [
+      ['Всего сделок', totalLeads, 'все строки в «РАБОЧИЙ АМО»'],
+      ['Успешных сделок', totalSucc, 'Оплачено/Успешно в РП/Успешно реализовано'],
+      ['Общий доход ₽', totalRevenue, 'AX, если 0 → Бюджет (только успешные)'],
+      ['Средний чек ₽', (totalSucc? totalRevenue/totalSucc:0), 'Доход / Успешные'],
+      ['Конверсия', (totalLeads? totalSucc/totalLeads:0), 'Успешные / Все']
+    ]
+  );
+  numberFmt_(sh,row+2,col+1,1,1,'#,##0');                  // Успешных
+  numberFmt_(sh,row+3,col+1,1,1,'#,##0');                  // Доход
+  numberFmt_(sh,row+4,col+1,1,1,'#,##0');                  // Ср чек
+  numberFmt_(sh,row+5,col+1,1,1,'0.00%');                  // Конверсия
+  row += 7;
+
+  // ИТОГИ ПО КАНАЛАМ
+  section_(sh,row,col,'📈 ИТОГО ПО КАНАЛАМ (за всё время)',12,'#EAF3FF'); row++;
+  const head = ['Канал','Сделки','Успешные','Доход ₽','Расход ₽','CAC ₽','ROMI %','ROI %','Ср. чек ₽','Конверсия'];
+  const body = channels.map(x=>[
+    x.ch, x.leads, x.succ, x.revenue, x.cost, x.cac, x.romi, x.roi, x.avg, x.conv
+  ]);
+  writeTable_(sh,row,col, head, body);
+  // форматы
+  numberFmt_(sh,row+1,col+3,body.length,1,'#,##0');   // Доход
+  numberFmt_(sh,row+1,col+4,body.length,1,'#,##0');   // Расход
+  numberFmt_(sh,row+1,col+5,body.length,1,'#,##0');   // CAC
+  numberFmt_(sh,row+1,col+6,body.length,1,'0.00%');   // ROMI
+  numberFmt_(sh,row+1,col+7,body.length,1,'0.00%');   // ROI
+  numberFmt_(sh,row+1,col+8,body.length,1,'#,##0');   // Ср чек
+  numberFmt_(sh,row+1,col+9,body.length,1,'0.00%');   // Конверсия
+  const chartStart = row; const chartRows = Math.max(1, body.length+1);
+  row += (body.length + 3);
+
+  // Диаграмма «Доход по каналам»
+  try {
+    sh.getCharts().forEach(ch=>sh.removeChart(ch));
+    const ch = sh.newChart()
+      .setChartType(Charts.ChartType.COLUMN)
+      .addRange(sh.getRange(chartStart, col, chartRows, 2)) // Канал, Сделки (domain: Канал)
+      .addRange(sh.getRange(chartStart, col+3, chartRows, 1)) // Доход
+      .setOption('title','Доход по каналам')
+      .setOption('legend.position','none')
+      .setOption('useFirstColumnAsDomain', true)
+      .setOption('titleTextStyle',{fontSize:14,bold:true})
+      .setOption('chartArea',{left:40,top:30,width:'80%',height:'60%'})
+      .setPosition(chartStart+1, 11, 0, 0)
+      .build();
+    sh.insertChart(ch);
+  } catch(e){}
+
+  // ПОМЕСЯЧНАЯ ДЕТАЛИЗАЦИЯ
+  section_(sh,row,col,'🗓️ ПОМЕСЯЧНАЯ ДЕТАЛИЗАЦИЯ',12,'#FFF3D9'); row++;
+  const headM = ['Месяц','Канал','Сделки','Успешные','Доход ₽','Расход ₽','CAC ₽','ROMI %','Ср. чек ₽','Конверсия'];
+  writeTable_(sh,row,col, headM, monthsRows);
+  numberFmt_(sh,row+1,col+4,monthsRows.length,1,'#,##0');
+  numberFmt_(sh,row+1,col+5,monthsRows.length,1,'#,##0');
+  numberFmt_(sh,row+1,col+6,monthsRows.length,1,'#,##0');
+  numberFmt_(sh,row+1,col+7,monthsRows.length,1,'0.00%');
+  numberFmt_(sh,row+1,col+8,monthsRows.length,1,'#,##0');
+  numberFmt_(sh,row+1,col+9,monthsRows.length,1,'0.00%');
+
+  autoResize_(sh);
+}
+
+/* триггер раз в час */
+function setHourlyTrigger_Marketing(){
+  ScriptApp.getProjectTriggers()
+    .filter(t=>t.getHandlerFunction()==='buildMarketingChannels')
+    .forEach(t=>ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('buildMarketingChannels').timeBased().everyHours(1).create();
+}
+
+/* ======================== ЧТЕНИЕ ДАННЫХ ======================== */
+function readRA_(ss){
+  const sh = ss.getSheetByName(MKT.RA_SHEET);
+  if (!sh) throw new Error('Нет листа "'+MKT.RA_SHEET+'"');
+
+  // Находим строку заголовков (обычно 2)
+  const peek = sh.getRange(1,1,Math.min(5,sh.getLastRow()||5), Math.min(250,sh.getLastColumn()||60)).getValues();
+  let headerRow = 2;
+  for (let r=0;r<peek.length;r++){
+    const row = (peek[r]||[]).map(String);
+    if (row.includes('ID') && (row.includes('Статус') || row.includes('Дата создания'))) { headerRow=r+1; break; }
+  }
+
+  const lastRow = sh.getLastRow(), lastCol = sh.getLastColumn();
+  if (lastRow < headerRow+1) return {rows:[], iAX:-1};
+
+  const header = sh.getRange(headerRow,1,1,lastCol).getValues()[0].map(String);
+  const rows   = sh.getRange(headerRow+1,1,lastRow-headerRow,lastCol).getValues();
+
+  // Индексы колонок
+  const iCreated = findHead_(header, MKT.HEADERS.CREATED);
+  const iClosed  = findHead_(header, MKT.HEADERS.CLOSED);     // опц
+  const iStatus  = findHead_(header, MKT.HEADERS.STATUS);
+  const iBudget  = findHead_(header, MKT.HEADERS.BUDGET);
+  const iTelTag  = findHead_(header, MKT.HEADERS.TELTAG);
+  const iUtm     = findHead_(header, MKT.HEADERS.UTM_SOURCE);
+  const iLastFrm = findHead_(header, MKT.HEADERS.LAST_FORM);
+  const iFormId  = findHead_(header, MKT.HEADERS.FORMID);
+  const iFormNm  = findHead_(header, MKT.HEADERS.FORMNAME);
+  const iReferer = findHead_(header, MKT.HEADERS.REFERER);
+  const iDate    = findHead_(header, MKT.HEADERS.DATE);
+
+  // правый "Сумма ₽" (AX)
+  let iAX = -1;
+  header.forEach((h,i)=>{ if (MKT.HEADERS.SUM_TITLE_RE.test(String(h||''))) iAX = i; });
+
+  return {rows, header, iCreated, iClosed, iStatus, iBudget, iTelTag, iUtm, iLastFrm, iFormId, iFormNm, iReferer, iDate, iAX};
+}
+
+function readCosts_(ss){
+  let sh = null;
+  for (const name of MKT.COST_SHEET_NAMES){
+    sh = ss.getSheetByName(name);
+    if (sh) break;
+  }
+  const totalByChannel = new Map();
+  const monthByChannel = new Map();
+  if (!sh) return {totalByChannel, monthByChannel};
+
+  const v = sh.getDataRange().getValues();
+  if (!v.length) return {totalByChannel, monthByChannel};
+  const head = (v[0]||[]).map(String);
+
+  const iCh  = idxByRegex_(head, /канал/i);
+  const iPer = idxByRegex_(head, /период|месяц|month/i);  // YYYY-MM
+  const iAmt = idxByRegex_(head, /расход|бюджет|сумм/i);
+
+  v.slice(1).forEach(r=>{
+    const chRaw = String(r[iCh]||'').trim();
+    const ch = normalizeChannelName_(chRaw);
+    const per = String(r[iPer]||'').trim();   // может быть пусто
+    const amt = toNum_(r[iAmt]);
+    if (!ch || !amt) return;
+
+    totalByChannel.set(ch, (totalByChannel.get(ch)||0)+amt);
+    if (per) monthByChannel.set(ch+'|'+per, (monthByChannel.get(ch+'|'+per)||0)+amt);
+  });
+
+  return {totalByChannel, monthByChannel};
+}
+
+/* ======================== ЛОГИКА/НОРМАЛИЗАЦИИ ======================== */
+function normalizeStatus_(raw){
+  let s = String(raw||'').trim();
+  // убираем "ВСЕ БАРЫ СЕТИ — …", хвосты после тире и т.д.
+  s = s.replace(/^\s*все\s*бары\s*сети\s*(?:[\/\\|:\-–—]\s*)?/i,'')
+       .replace(/\s*(?:-|–|—)\s*.*$/,'').trim();
+  const rules = [
+    [/оплач/i,'Оплачено'],
+    [/успеш.*в\s*рп/i,'Успешно в РП'],
+    [/успеш.*реализ/i,'Успешно реализовано'],
+    [/закрыто.*не.*реализ/i,'Закрыто и не реализовано'],
+    [/контрол.*оплат/i,'Контроль оплаты'],
+    [/перенос.*открытой.*дат/i,'Перенос с открытой датой'],
+    [/вопрос.*бару/i,'Вопрос к бару'],
+    [/ндз|не\s*дозвон/i,'НДЗ'],
+    [/авто.*распредел/i,'Автораспределение'],
+    [/взял.*в\s*работу|в работе/i,'Взяли в работу'],
+    [/отменен.*рестоплейс/i,'Отменен в Рестоплейс']
+  ];
+  for (const [re,n] of rules){ if (re.test(s)) return n; }
+  return s || 'Новый лид';
+}
+
+function pickChannel_(r, src){
+  const tel = (src.iTelTag>-1 ? String(r[src.iTelTag]||'').trim() : '').toLowerCase();
+  if (tel) return normalizeChannelName_(tel);
+
+  const utm = (src.iUtm>-1 ? String(r[src.iUtm]||'').trim() : '').toLowerCase();
+  if (utm) return normalizeChannelName_(utm);
+
+  const hasForm = [src.iLastFrm, src.iFormId, src.iFormNm, src.iReferer, src.iDate]
+    .some(i => i>-1 && String(r[i]||'').trim()!=='');
+  if (hasForm) return 'direct_site';
+
+  return '(без канала)';
+}
+
+function normalizeChannelName_(name){
+  const s = String(name||'').trim().toLowerCase();
+  if (!s) return '';
+  if (s === 'ya_map#booking') return 'ya_map';
+  return s;
+}
+
+function monthKey_(d){
+  const dt = (d instanceof Date) ? d : new Date(d);
+  if (isNaN(dt)) return {key:'0000-00', label:'—'};
+  const y = dt.getFullYear();
+  const m = dt.getMonth()+1;
+  const key = `${y}-${('0'+m).slice(-2)}`;
+  const L = ['ЯНВ','ФЕВ','МАР','АПР','МАЙ','ИЮН','ИЮЛ','АВГ','СЕН','ОКТ','НОЯ','ДЕК'][m-1];
+  return {key, label:`${L} ’${String(y).slice(-2)}`};
+}
+
+/* ======================== ВСПОМОГАТЕЛЬНЫЕ ======================== */
+function findHead_(header, variants){
+  const norm = header.map(h=>String(h||'').trim().toLowerCase());
+  for (const name of variants){
+    const n = String(name).trim().toLowerCase();
+    let i = norm.indexOf(n);
+    if (i>-1) return i;
+  }
+  return -1;
+}
+function idxByRegex_(header, re){
+  const norm = header.map(h=>String(h||''));
+  for (let i=0;i<norm.length;i++) if (re.test(norm[i])) return i;
+  return -1;
+}
+function toNum_(v){
+  if (v==null || v==='') return 0;
+  const n = Number(String(v).replace(/\s+/g,'').replace(',','.'));
+  return isNaN(n) ? 0 : n;
+}
+
+/* оформление */
+function setFontAll_(sh,font){
+  sh.getRange(1,1,Math.max(1, sh.getMaxRows()), Math.max(1, sh.getMaxColumns()))
+    .setFontFamily(font);
+}
+function band_(sh,row,col,rows,cols,bg){
+  ensureSize_(sh,row+rows-1,col+cols-1);
+  sh.getRange(row,col,rows,cols).setBackground(bg);
+}
+function section_(sh,row,col,text,width,bg){
+  ensureSize_(sh,row,col+Math.max(1,width)-1);
+  const rng = sh.getRange(row,col,1,Math.max(1,width));
+  try{ rng.merge(); }catch(e){}
+  rng.setValue(text).setBackground(bg).setFontWeight('bold')
+     .setBorder(null,null,true,null,false,false,'#9EB6E7',SpreadsheetApp.BorderStyle.SOLID)
+     .setFontSize(13);
+}
+function writeTable_(sh,row,col,header,data){
+  ensureSize_(sh,row+Math.max(1,data.length),col+header.length-1);
+  const h = sh.getRange(row,col,1,header.length);
+  h.setValues([header]).setFontWeight('bold').setBackground('#E9F2FB');
+  if (data.length){
+    const rng = sh.getRange(row+1,col,data.length,header.length);
+    rng.setValues(data.map(r=>r.map(v => (v===null||v===undefined||!isFiniteNum_(v)? v : Number(v)))));
+    // сетка + зебра
+    rng.setBorder(true,true,true,true,true,true);
+    const bgs = [];
+    for (let i=0;i<data.length;i++){
+      bgs.push(new Array(header.length).fill(i%2===0?'#FFFFFF':'#F8FCFF'));
+    }
+    rng.setBackgrounds(bgs);
+  }
+}
+function isFiniteNum_(v){ return typeof v==='number' && isFinite(v); }
+function numberFmt_(sh,row,col,nRows,nCols,fmt){
+  if (nRows<=0 || nCols<=0) return;
+  sh.getRange(row,col,nRows,nCols).setNumberFormat(fmt);
+}
+function ensureSize_(sh,needRow,needCol){
+  if (sh.getMaxRows() < needRow) sh.insertRowsAfter(sh.getMaxRows(), needRow - sh.getMaxRows());
+  if (sh.getMaxColumns() < needCol) sh.insertColumnsAfter(sh.getMaxColumns(), needCol - sh.getMaxColumns());
+}
+function autoResize_(sh){
+  const c = sh.getLastColumn();
+  for (let i=1;i<=c;i++) try{ sh.autoResizeColumn(i); }catch(e){}
+}
+
+/* удобное меню */
+function onOpen(){
+  SpreadsheetApp.getUi()
+    .createMenu('📊 Маркетинг')
+    .addItem('Пересчитать отчёт', 'buildMarketingChannels')
+    .addItem('Hourly-триггер', 'setHourlyTrigger_Marketing')
+    .addToUi();
+}
