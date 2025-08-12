@@ -644,13 +644,10 @@ function testEmailNotifications() {
       SpreadsheetApp.getUi().ButtonSet.OK
     );
   }
-}
-
   } catch (e) {
     logToSheet(ss, `Ошибка обновления: ${e.toString()}`, 'ERROR');
     throw e;
   }
-}
 
 /**
  * Чтение таблицы с универсальными утилитами
