@@ -51,9 +51,13 @@ const CONFIG = {
     // Аналитические отчёты
     REFUSAL_ANALYSIS: 'Причина отказов',
     CHANNEL_ANALYSIS: 'СРАВНИТЕЛЬНЫЙ АНАЛИЗ',
-    FIRST_TOUCH: 'FIRST-TOUCH ANALYSIS',
-    AMO_SUMMARY: 'СВОДНАЯ АНАЛИТИКА AMOcrm',
-    DAILY_STATS: 'Ежедневная статистика',
+    FIRST_TOUCH_ATTRIBUTION: 'FIRST-TOUCH ANALYSIS',
+    AMOCRM_SUMMARY: 'СВОДНАЯ АНАЛИТИКА AMOcrm',
+    DAILY_STATISTICS: 'Ежедневная статистика',
+    LEADS_ANALYSIS: 'Лиды по каналам',
+    UTM_ANALYSIS: 'UTM аналитика',
+    MANAGER_PERFORMANCE: 'Анализ менеджеров',
+    MONTHLY_COMPARISON: 'Сравнение месяцев',
     
     // Служебные листы
     MAIN_DASHBOARD: 'Главная',

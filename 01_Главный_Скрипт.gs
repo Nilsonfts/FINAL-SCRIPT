@@ -504,37 +504,63 @@ function getSheet_(sheetName) {
 
 /**
  * Получает данные с листа в виде объекта с заголовками и строками
- * @param {string} sheetName - Имя листа
- * @return {Object} Объект с header и rows
+ * @param {string|Sheet} sheetOrName - Имя листа или объект листа
+ * @return {Object|Array} Объект с header и rows или массив данных (для совместимости)
  * @private
  */
-function getSheetData_(sheetName) {
+function getSheetData_(sheetOrName) {
   try {
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+    let sheet;
+    let returnFormat = 'object'; // По умолчанию возвращаем объект
+    
+    // Определяем тип параметра
+    if (typeof sheetOrName === 'string') {
+      // Передано имя листа
+      sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetOrName);
+      returnFormat = 'object';
+    } else if (sheetOrName && typeof sheetOrName === 'object' && sheetOrName.getName) {
+      // Передан объект Sheet
+      sheet = sheetOrName;
+      returnFormat = 'array'; // Для совместимости со старыми модулями
+    } else {
+      logError_('GET_SHEET_DATA', 'Неверный тип параметра - ожидается имя листа или объект Sheet');
+      return returnFormat === 'object' ? { header: [], rows: [] } : [];
+    }
+    
     if (!sheet) {
+      const sheetName = typeof sheetOrName === 'string' ? sheetOrName : 'неизвестный';
       logWarning_('GET_SHEET_DATA', `Лист "${sheetName}" не найден`);
-      return { header: [], rows: [] };
+      return returnFormat === 'object' ? { header: [], rows: [] } : [];
     }
     
     if (sheet.getLastRow() <= 1) {
-      logWarning_('GET_SHEET_DATA', `Лист "${sheetName}" пуст или содержит только заголовки`);
-      return { header: [], rows: [] };
+      logWarning_('GET_SHEET_DATA', `Лист "${sheet.getName()}" пуст или содержит только заголовки`);
+      return returnFormat === 'object' ? { header: [], rows: [] } : [];
     }
     
     const values = sheet.getDataRange().getValues();
     if (!values || values.length === 0) {
-      return { header: [], rows: [] };
+      return returnFormat === 'object' ? { header: [], rows: [] } : [];
     }
     
     const header = (values[0] || []).map(String);
     const rows = values.slice(1).filter(r => r.some(x => String(x).trim() !== ''));
     
-    logInfo_('GET_SHEET_DATA', `Получено ${rows.length} строк из листа "${sheetName}"`);
-    return { header, rows };
+    logInfo_('GET_SHEET_DATA', `Получено ${rows.length} строк из листа "${sheet.getName()}"`);
+    
+    // Возвращаем в нужном формате
+    if (returnFormat === 'array') {
+      // Для совместимости со старыми модулями - возвращаем массив
+      return [header, ...rows];
+    } else {
+      // Новый формат - объект с header и rows
+      return { header, rows };
+    }
     
   } catch (error) {
+    const sheetName = typeof sheetOrName === 'string' ? sheetOrName : 'неизвестный';
     logError_('GET_SHEET_DATA', `Ошибка получения данных с листа "${sheetName}"`, error);
-    return { header: [], rows: [] };
+    return returnFormat === 'object' ? { header: [], rows: [] } : [];
   }
 }
 
