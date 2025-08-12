@@ -571,21 +571,16 @@ function addChannelAnalysisCharts_(sheet, channelData) {
       channelData.allTimeData.slice(0, 8).map(item => [item.channel, item.totalRevenue])
     );
     
-    const revenueChart = sheet.insertChart(
-      Charts.newPieChart()
-        .setDataRange(sheet.getRange(1, 8, revenueChartData.length, 2))
-        .setOption('title', 'Распределение выручки по каналам (за всё время)')
-        .setOption('titleTextStyle', { fontSize: 14, bold: true })
-        .setOption('legend', { position: 'right' })
-        .setOption('chartArea', { width: '80%', height: '80%' })
-        .setPosition(3, 8, 0, 0)
-        .setOption('width', 500)
-        .setOption('height', 350)
-        .build()
-    );
-    
-    // Записываем данные для диаграммы
-    sheet.getRange(1, 8, revenueChartData.length, 2).setValues(revenueChartData);
+    // Создаем диаграмму через универсальную функцию
+    const revenueChart = createChart_(sheet, 'pie', revenueChartData, {
+      startRow: 1,
+      startCol: 8,
+      title: 'Распределение выручки по каналам (за всё время)',
+      position: { row: 3, col: 8 },
+      width: 500,
+      height: 350,
+      legend: 'right'
+    });
   }
   
   // 2. Столбчатая диаграмма конверсии по каналам
@@ -594,22 +589,18 @@ function addChannelAnalysisCharts_(sheet, channelData) {
       channelData.allTimeData.slice(0, 10).map(item => [item.channel, item.conversion])
     );
     
-    const conversionChart = sheet.insertChart(
-      Charts.newColumnChart()
-        .setDataRange(sheet.getRange(1, 11, conversionChartData.length, 2))
-        .setOption('title', 'Конверсия по каналам')
-        .setOption('titleTextStyle', { fontSize: 14, bold: true })
-        .setOption('legend', { position: 'none' })
-        .setOption('hAxis', { title: 'Канал', slantedText: true })
-        .setOption('vAxis', { title: 'Конверсия, %' })
-        .setPosition(3, 14, 0, 0)
-        .setOption('width', 600)
-        .setOption('height', 350)
-        .build()
-    );
-    
-    // Записываем данные для диаграммы
-    sheet.getRange(1, 11, conversionChartData.length, 2).setValues(conversionChartData);
+    // Создаем диаграмму через универсальную функцию
+    const conversionChart = createChart_(sheet, 'column', conversionChartData, {
+      startRow: 1,
+      startCol: 11,
+      title: 'Конверсия по каналам',
+      position: { row: 3, col: 14 },
+      width: 600,
+      height: 350,
+      legend: 'none',
+      hAxisTitle: 'Канал',
+      vAxisTitle: 'Конверсия, %'
+    });
   }
   
   // 3. Динамика топ каналов по месяцам
@@ -632,22 +623,18 @@ function addChannelAnalysisCharts_(sheet, channelData) {
       monthlyChartData.push(row);
     });
     
-    const monthlyChart = sheet.insertChart(
-      Charts.newLineChart()
-        .setDataRange(sheet.getRange(1, 15, monthlyChartData.length, monthlyChartHeaders.length))
-        .setOption('title', 'Динамика топ каналов по месяцам')
-        .setOption('titleTextStyle', { fontSize: 14, bold: true })
-        .setOption('legend', { position: 'top' })
-        .setOption('hAxis', { title: 'Месяц', slantedText: true })
-        .setOption('vAxis', { title: 'Количество лидов' })
-        .setPosition(25, 8, 0, 0)
-        .setOption('width', 700)
-        .setOption('height', 400)
-        .build()
-    );
-    
-    // Записываем данные для диаграммы
-    sheet.getRange(1, 15, monthlyChartData.length, monthlyChartHeaders.length).setValues(monthlyChartData);
+    // Создаем диаграмму через универсальную функцию
+    const monthlyChart = createChart_(sheet, 'line', monthlyChartData, {
+      startRow: 1,
+      startCol: 15,
+      title: 'Динамика топ каналов по месяцам',
+      position: { row: 25, col: 8 },
+      width: 700,
+      height: 400,
+      legend: 'top',
+      hAxisTitle: 'Месяц',
+      vAxisTitle: 'Количество лидов'
+    });
   }
 }
 
