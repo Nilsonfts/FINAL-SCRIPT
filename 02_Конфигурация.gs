@@ -30,6 +30,23 @@ const CONFIG = {
   // ===== ГЛОБАЛЬНЫЕ НАСТРОЙКИ ДАННЫХ =====
   RAW_DATA: 'РАБОЧИЙ АМО', // Основной источник данных для всех модулей
   
+  // ===== ГЛОБАЛЬНЫЕ ЛИСТЫ ДЛЯ ВСЕХ МОДУЛЕЙ =====
+  SHEETS: {
+    RAW_DATA: 'РАБОЧИЙ АМО',
+    AMOCRM_SUMMARY: 'СВОДНАЯ АНАЛИТИКА AMOcrm',
+    REFUSAL_ANALYSIS: 'Причина отказов',
+    CHANNEL_ANALYSIS: 'СРАВНИТЕЛЬНЫЙ АНАЛИЗ',
+    LEADS_ANALYSIS: 'Лиды по каналам',
+    UTM_ANALYSIS: 'UTM аналитика',
+    FIRST_TOUCH_ATTRIBUTION: 'FIRST-TOUCH ANALYSIS',
+    DAILY_STATISTICS: 'Ежедневная статистика',
+    MANAGER_PERFORMANCE: 'Анализ менеджеров',
+    MONTHLY_COMPARISON: 'Сравнение месяцев',
+    CLIENT_ANALYSIS: 'Клиентская аналитика',
+    BOOKING_ANALYSIS: 'Анализ броней',
+    BEAUTY_ANALYTICS: 'Beauty Analytics'
+  },
+  
   // ===== ОСНОВНОЙ СКРИПТ СБОРА ДАННЫХ =====
   mainScript: {
     // ===== ОСНОВНЫЕ ЛИСТЫ ДАННЫХ =====
