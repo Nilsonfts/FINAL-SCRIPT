@@ -468,6 +468,42 @@ function getSheet_(sheetName) {
 }
 
 /**
+ * Получает данные с листа в виде объекта с заголовками и строками
+ * @param {string} sheetName - Имя листа
+ * @return {Object} Объект с header и rows
+ * @private
+ */
+function getSheetData_(sheetName) {
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+    if (!sheet) {
+      logWarning_('GET_SHEET_DATA', `Лист "${sheetName}" не найден`);
+      return { header: [], rows: [] };
+    }
+    
+    if (sheet.getLastRow() <= 1) {
+      logWarning_('GET_SHEET_DATA', `Лист "${sheetName}" пуст или содержит только заголовки`);
+      return { header: [], rows: [] };
+    }
+    
+    const values = sheet.getDataRange().getValues();
+    if (!values || values.length === 0) {
+      return { header: [], rows: [] };
+    }
+    
+    const header = (values[0] || []).map(String);
+    const rows = values.slice(1).filter(r => r.some(x => String(x).trim() !== ''));
+    
+    logInfo_('GET_SHEET_DATA', `Получено ${rows.length} строк из листа "${sheetName}"`);
+    return { header, rows };
+    
+  } catch (error) {
+    logError_('GET_SHEET_DATA', `Ошибка получения данных с листа "${sheetName}"`, error);
+    return { header: [], rows: [] };
+  }
+}
+
+/**
  * Создаёт главную страницу дашборда
  * @private
  */
@@ -1034,4 +1070,121 @@ function humanizeHeader(header) {
   };
   
   return humanMap[header] || header.replace(/^(Сделка|Контакт)\./, '');
+}
+
+/**
+ * Заглушка для обновления ежедневной статистики
+ * Будет заменена на полную функцию из модуля 12_Ежедневная_Статистика.gs
+ */
+function updateDailyStatistics() {
+  try {
+    logInfo_('DAILY_STATS', 'Начало обновления ежедневной статистики');
+    
+    // Получаем данные из рабочего листа
+    const workingData = getSheetData_(CONFIG.SHEETS.OUT);
+    if (workingData.rows.length === 0) {
+      logWarning_('DAILY_STATS', 'Нет данных для анализа');
+      return;
+    }
+    
+    // Создаём базовый отчёт ежедневной статистики
+    const dailySheet = getOrCreateSheet_('Ежедневная статистика');
+    clearSheetData_(dailySheet);
+    
+    // Заголовки
+    const headers = ['Дата', 'Всего сделок', 'Новые лиды', 'Конверсии', 'Среднее время обработки'];
+    dailySheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    applyHeaderStyle_(dailySheet.getRange(1, 1, 1, headers.length));
+    
+    // Получаем статистику по дням
+    const dailyStats = analyzeDailyStats_(workingData);
+    if (dailyStats.length > 0) {
+      dailySheet.getRange(2, 1, dailyStats.length, headers.length).setValues(dailyStats);
+      applyDataStyle_(dailySheet.getRange(2, 1, dailyStats.length, headers.length));
+    }
+    
+    // Автоширина столбцов
+    dailySheet.autoResizeColumns(1, headers.length);
+    
+    logInfo_('DAILY_STATS', `Ежедневная статистика обновлена: ${dailyStats.length} записей`);
+    
+  } catch (error) {
+    logError_('DAILY_STATS', 'Ошибка обновления ежедневной статистики', error);
+    throw error;
+  }
+}
+
+/**
+ * Анализирует данные по дням
+ * @param {Object} workingData - Данные из рабочего листа
+ * @return {Array} Массив статистики по дням
+ * @private
+ */
+function analyzeDailyStats_(workingData) {
+  const dailyMap = new Map();
+  
+  // Найдём индекс колонки с датой
+  const dateIdx = findColumnIndex(workingData.header, ['Дата создания', 'Сделка.Дата создания', 'Date']);
+  if (dateIdx === -1) {
+    logWarning_('DAILY_STATS', 'Колонка с датой не найдена');
+    return [];
+  }
+  
+  // Группируем по дням
+  workingData.rows.forEach(row => {
+    const dateValue = row[dateIdx];
+    if (!dateValue) return;
+    
+    let dateStr;
+    if (dateValue instanceof Date) {
+      dateStr = formatDate_(dateValue, 'DD.MM.YYYY');
+    } else {
+      const parsedDate = new Date(dateValue);
+      if (isNaN(parsedDate)) return;
+      dateStr = formatDate_(parsedDate, 'DD.MM.YYYY');
+    }
+    
+    if (!dailyMap.has(dateStr)) {
+      dailyMap.set(dateStr, {
+        total: 0,
+        new_leads: 0,
+        conversions: 0
+      });
+    }
+    
+    const stats = dailyMap.get(dateStr);
+    stats.total++;
+    
+    // Определяем новые лиды (упрощённая логика)
+    const status = String(row[findColumnIndex(workingData.header, ['Статус', 'Сделка.Статус'])] || '');
+    if (status.includes('Новый') || status.includes('новый') || status.includes('NEW')) {
+      stats.new_leads++;
+    }
+    
+    // Определяем конверсии (упрощённая логика)
+    if (status.includes('Успешно') || status.includes('успешно') || status.includes('Закрыт') || status.includes('SUCCESS')) {
+      stats.conversions++;
+    }
+  });
+  
+  // Преобразуем в массив для таблицы
+  const result = [];
+  for (const [date, stats] of dailyMap.entries()) {
+    result.push([
+      date,
+      stats.total,
+      stats.new_leads,
+      stats.conversions,
+      '~5 мин' // Заглушка для времени обработки
+    ]);
+  }
+  
+  // Сортируем по дате (новые сверху)
+  result.sort((a, b) => {
+    const dateA = new Date(a[0].split('.').reverse().join('-'));
+    const dateB = new Date(b[0].split('.').reverse().join('-'));
+    return dateB - dateA;
+  });
+  
+  return result;
 }
