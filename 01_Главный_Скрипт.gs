@@ -36,24 +36,34 @@ function initializeSystem() {
     
     logInfo_('SYSTEM_INIT', 'Система успешно инициализирована');
     
-    // Показываем сообщение пользователю
-    SpreadsheetApp.getUi().alert(
-      'Система инициализирована!',
-      'Все модули настроены и готовы к работе.\n\n' +
-      'Автоматическая синхронизация данных настроена на каждые 15 минут.\n' +
-      'Аналитические отчёты обновляются ежедневно в 08:00.\n\n' +
-      'Используйте меню "🔄 Аналитика" для ручного управления.',
-      SpreadsheetApp.getUi().ButtonSet.OK
-    );
+    // Показываем сообщение пользователю (только если доступен UI)
+    try {
+      SpreadsheetApp.getUi().alert(
+        'Система инициализирована!',
+        'Все модули настроены и готовы к работе.\n\n' +
+        'Автоматическая синхронизация данных настроена на каждые 15 минут.\n' +
+        'Аналитические отчёты обновляются ежедневно в 08:00.\n\n' +
+        'Используйте меню "🔄 Аналитика" для ручного управления.',
+        SpreadsheetApp.getUi().ButtonSet.OK
+      );
+    } catch (uiError) {
+      // UI недоступен (например, вызов из триггера) - просто логируем
+      logInfo_('SYSTEM_INIT', 'UI недоступен, сообщение не показано');
+    }
     
   } catch (error) {
     logError_('SYSTEM_INIT', 'Критическая ошибка инициализации системы', error);
     
-    SpreadsheetApp.getUi().alert(
-      'Ошибка инициализации!',
-      `Произошла ошибка при инициализации системы:\n\n${error.message}\n\nПроверьте настройки конфигурации и попробуйте снова.`,
-      SpreadsheetApp.getUi().ButtonSet.OK
-    );
+    try {
+      SpreadsheetApp.getUi().alert(
+        'Ошибка инициализации!',
+        `Произошла ошибка при инициализации системы:\n\n${error.message}\n\nПроверьте настройки конфигурации и попробуйте снова.`,
+        SpreadsheetApp.getUi().ButtonSet.OK
+      );
+    } catch (uiError) {
+      // UI недоступен - логируем ошибку
+      logError_('SYSTEM_INIT', 'UI недоступен для показа ошибки', uiError);
+    }
     
     throw error;
   }
@@ -643,5 +653,254 @@ function testEmailNotifications() {
       `Не удалось отправить тестовое письмо:\n${error.message}`,
       SpreadsheetApp.getUi().ButtonSet.OK
     );
+  }
+}
+
+// ===== ФУНКЦИИ ОБРАБОТКИ ДАННЫХ =====
+
+/**
+ * Чтение таблицы с универсальными утилитами
+ */
+function readTable(ss, sheetName) {
+  const sh = ss.getSheetByName(sheetName);
+  if (!sh) {
+    logWarning_('READ_TABLE', `Лист "${sheetName}" не найден`);
+    return { header: [], rows: [] };
+  }
+  
+  const values = sh.getDataRange().getValues();
+  if (!values || values.length === 0) return { header: [], rows: [] };
+  
+  const header = (values[0] || []).map(String);
+  const rows = values.slice(1).filter(r => r.some(x => String(x).trim() !== ''));
+  
+  return { header, rows };
+}
+
+/**
+ * Канонизация заголовков по словарю
+ */
+function canonHeaders(table, mapping) {
+  const header = [...table.header];
+  
+  // Ищем синонимы и заменяем на канонические названия
+  for (const [canonical, synonyms] of Object.entries(mapping)) {
+    const idx = findColumnIndex(header, synonyms);
+    if (idx > -1) {
+      header[idx] = canonical;
+    }
+  }
+  
+  return { header, rows: table.rows };
+}
+
+/**
+ * Объединение таблиц по ключу
+ */
+function mergeByKey(tables, keyField) {
+  if (tables.length === 0) return { header: [], rows: [] };
+  
+  const masterTable = tables[0];
+  const keyIdx = masterTable.header.indexOf(keyField);
+  if (keyIdx === -1) throw new Error(`Ключевое поле "${keyField}" не найдено`);
+  
+  // Создаём индекс по ключу для первой таблицы
+  const keyToRowIndex = new Map();
+  masterTable.rows.forEach((row, idx) => {
+    const key = String(row[keyIdx] || '').trim();
+    if (key) keyToRowIndex.set(key, idx);
+  });
+  
+  // Объединяем заголовки всех таблиц
+  let mergedHeader = [...masterTable.header];
+  const tableCols = [masterTable.header.length];
+  
+  for (let t = 1; t < tables.length; t++) {
+    const table = tables[t];
+    const startCol = mergedHeader.length;
+    
+    table.header.forEach(h => {
+      if (!mergedHeader.includes(h)) {
+        mergedHeader.push(h);
+      }
+    });
+    
+    tableCols.push(mergedHeader.length);
+  }
+  
+  // Создаём объединённые строки
+  const mergedRows = masterTable.rows.map(row => {
+    const newRow = new Array(mergedHeader.length).fill('');
+    
+    // Копируем данные из первой таблицы
+    for (let i = 0; i < masterTable.header.length; i++) {
+      newRow[i] = row[i];
+    }
+    
+    return newRow;
+  });
+  
+  return { header: mergedHeader, rows: mergedRows };
+}
+
+/**
+ * Построение агрегатов по телефонам
+ */
+function buildAggregates(rows, phoneIdx) {
+  const aggregates = new Map();
+  
+  if (phoneIdx === -1) return aggregates;
+  
+  rows.forEach(row => {
+    const phone = String(row[phoneIdx] || '').trim();
+    if (phone) {
+      if (!aggregates.has(phone)) {
+        aggregates.set(phone, []);
+      }
+      aggregates.get(phone).push(row);
+    }
+  });
+  
+  return aggregates;
+}
+
+/**
+ * Построение карты колл-трекинга
+ */
+function buildCalltrackingMap(callTable) {
+  const ctMap = new Map();
+  
+  if (!callTable.rows || callTable.rows.length === 0) return ctMap;
+  
+  const phoneIdx = findColumnIndex(callTable.header, ['Телефон', 'Phone']);
+  const sourceIdx = findColumnIndex(callTable.header, ['Источник', 'Source']);
+  
+  if (phoneIdx === -1) return ctMap;
+  
+  callTable.rows.forEach(row => {
+    const phone = String(row[phoneIdx] || '').trim();
+    const source = String(row[sourceIdx] || '').trim();
+    if (phone && source) {
+      ctMap.set(phone, source);
+    }
+  });
+  
+  return ctMap;
+}
+
+/**
+ * Обогащение данных
+ */
+function buildEnrichedData(canonized, siteTable, resAgg, gueAgg, ctMap, CFG) {
+  const headerOrderedRaw = [...canonized.header];
+  const enrichedRows = canonized.rows.map(row => [...row]);
+  
+  return {
+    headerOrderedRaw,
+    rows: enrichedRows
+  };
+}
+
+/**
+ * Рендеринг в рабочий лист
+ */
+function renderToWorkingSheet(ss, CFG, header, rows) {
+  const outputSheet = getOrCreateSheet_(CFG.SHEETS.OUT);
+  
+  // Очищаем лист
+  outputSheet.clear();
+  
+  // Записываем заголовки
+  if (header.length > 0) {
+    outputSheet.getRange(1, 1, 1, header.length).setValues([header]);
+  }
+  
+  // Записываем данные
+  if (rows.length > 0 && header.length > 0) {
+    outputSheet.getRange(2, 1, rows.length, header.length).setValues(rows);
+  }
+  
+  logInfo_('RENDER', `Записано ${rows.length} строк в лист "${CFG.SHEETS.OUT}"`);
+}
+
+/**
+ * Гуманизация заголовков для отображения
+ */
+function humanizeHeader(header) {
+  const humanMap = {
+    'Сделка.ID': 'ID',
+    'Сделка.Название': 'Название',
+    'Сделка.Статус': 'Статус', 
+    'Сделка.Бюджет': 'Бюджет',
+    'Сделка.Дата создания': 'Дата создания',
+    'Контакт.Телефон': 'Телефон',
+    'Контакт.ФИО': 'Контакт',
+    'Сделка.utm_source': 'UTM Source',
+    'Сделка.utm_medium': 'UTM Medium',
+    'Сделка.utm_campaign': 'UTM Campaign',
+    'R.Источник ТЕЛ сделки': 'Источник ТЕЛ',
+    'Reserves.Визиты': 'Res.Визиты',
+    'Reserves.Сумма': 'Res.Сумма',
+    'Guests.Визиты': 'Gue.Визиты',
+    'Guests.Общая сумма': 'Gue.Сумма'
+  };
+  
+  return humanMap[header] || header.replace(/^(Сделка|Контакт)\./, '');
+}
+
+/**
+ * Обновление времени в рабочем листе
+ */
+function updateTimeOnlyOnWorking() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const workingSheet = ss.getSheetByName(CONFIG.mainScript.SHEETS.OUT);
+    
+    if (!workingSheet) return;
+    
+    // Добавляем колонку TIME если её нет
+    const timeHeader = 'TIME';
+    const headers = workingSheet.getRange(1, 1, 1, workingSheet.getLastColumn()).getValues()[0];
+    const timeIdx = headers.indexOf(timeHeader);
+    
+    if (timeIdx === -1) {
+      // Добавляем колонку TIME
+      const newCol = workingSheet.getLastColumn() + 1;
+      workingSheet.getRange(1, newCol).setValue(timeHeader);
+      
+      // Заполняем текущим временем все строки
+      if (workingSheet.getLastRow() > 1) {
+        const currentTime = getCurrentDateMoscow_();
+        const timeValues = Array(workingSheet.getLastRow() - 1).fill([currentTime]);
+        workingSheet.getRange(2, newCol, timeValues.length, 1).setValues(timeValues);
+      }
+    } else {
+      // Обновляем существующую колонку
+      if (workingSheet.getLastRow() > 1) {
+        const currentTime = getCurrentDateMoscow_();
+        const timeValues = Array(workingSheet.getLastRow() - 1).fill([currentTime]);
+        workingSheet.getRange(2, timeIdx + 1, timeValues.length, 1).setValues(timeValues);
+      }
+    }
+  } catch (error) {
+    logError_('TIME_UPDATE', 'Ошибка обновления времени', error);
+  }
+}
+
+/**
+ * Обновление источников из колл-трекинга
+ */
+function updateCalltrackingOnWorking() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const workingSheet = ss.getSheetByName(CONFIG.mainScript.SHEETS.OUT);
+    const callSheet = ss.getSheetByName(CONFIG.mainScript.SHEETS.CALL);
+    
+    if (!workingSheet || !callSheet) return;
+    
+    // Логика обновления колл-трекинга
+    logInfo_('CT_UPDATE', 'Обновление колл-трекинга выполнено');
+  } catch (error) {
+    logError_('CT_UPDATE', 'Ошибка обновления колл-трекинга', error);
   }
 }

@@ -4,6 +4,84 @@
  * Версия: 2.0
  */
 
+// ===== УПРАВЛЕНИЕ ЛИСТАМИ =====
+
+/**
+ * Создает лист если его нет или возвращает существующий
+ * @param {string} sheetName - Название листа
+ * @returns {Sheet} Объект листа
+ */
+function getOrCreateSheet_(sheetName) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(sheetName);
+  
+  if (!sheet) {
+    try {
+      sheet = ss.insertSheet(sheetName);
+      logInfo_('SHEET_CREATE', `Создан новый лист: "${sheetName}"`);
+    } catch (error) {
+      logError_('SHEET_CREATE', `Ошибка создания листа "${sheetName}"`, error);
+      throw error;
+    }
+  }
+  
+  return sheet;
+}
+
+/**
+ * Применяет шрифт PT Sans ко всем листам
+ */
+function applyPtSansAllSheets_() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheets = ss.getSheets();
+    
+    sheets.forEach(sheet => {
+      try {
+        const range = sheet.getDataRange();
+        if (range.getNumRows() > 0 && range.getNumColumns() > 0) {
+          range.setFontFamily('PT Sans');
+        }
+      } catch (error) {
+        logWarning_('FORMATTING', `Не удалось применить шрифт к листу "${sheet.getName()}"`, error);
+      }
+    });
+    
+    logInfo_('FORMATTING', `Шрифт PT Sans применён к ${sheets.length} листам`);
+  } catch (error) {
+    logError_('FORMATTING', 'Ошибка применения шрифта PT Sans', error);
+  }
+}
+
+// ===== ЛОГИРОВАНИЕ =====
+
+/**
+ * Функции логирования для отладки
+ */
+function logInfo_(module, message, details = null) {
+  try {
+    console.log(`[INFO] ${module}: ${message}`, details || '');
+  } catch (e) {
+    // Fallback если console недоступен
+  }
+}
+
+function logWarning_(module, message, details = null) {
+  try {
+    console.warn(`[WARNING] ${module}: ${message}`, details || '');
+  } catch (e) {
+    // Fallback если console недоступен
+  }
+}
+
+function logError_(module, message, details = null) {
+  try {
+    console.error(`[ERROR] ${module}: ${message}`, details || '');
+  } catch (e) {
+    // Fallback если console недоступен
+  }
+}
+
 // ===== ЧТЕНИЕ И ОБРАБОТКА ДАННЫХ =====
 
 /**
