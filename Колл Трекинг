@@ -1,0 +1,747 @@
+/****************************************************************
+ * КОЛЛТРЕКИНГ — распределение звонков, средний чек, источники
+ * Источник данных: лист "РАБОЧИЙ АМО" (ничего на нём НЕ меняем).
+ * Справочник номеров → тег → канал: лист "КоллТрекинг" (A=Номер, B=Тег, C=Канал).
+ * Отчёт пишем на лист "Calltracking" (создаём при необходимости).
+ * Табличные стили на любых листах не трогаем — пишем только значения.
+ ***************************************************************/
+
+// Палитра брендов для каналов (используется в диаграммах)
+const CHANNEL_COLORS = {
+  '2Гис': '#00B956',             // 2GIS зелёный
+  'Яндекс Карты': '#FF3B30',     // Yandex красный
+  'Рестоклаб': '#7E57C2',        // фиолетовый (условно-брендовый)
+  'Соц сети + Гугл': '#4285F4',  // синий (Google / соцсети)
+  'Основной': '#607D8B'          // серо-синий для "Основной"
+};
+function colorForChannel_(name){
+  const n = String(name || '').trim();
+  return CHANNEL_COLORS[n] || '#9E9E9E';
+}
+
+const CT_CFG = {
+  RA_SHEET: 'РАБОЧИЙ АМО',
+  DIRECTORY_SHEET: 'КоллТрекинг',
+  REPORT_SHEET: 'Calltracking',
+  // показывать ли блок "Сводка по тегам": false — оставляем только «Сводка по каналам»
+  SHOW_TAGS: false,
+  KEEP_USER_FORMAT: false, // если true — пишем только значения, стили пользователя не трогаем
+  // ключевые колонки в РАБОЧИЙ АМО (ищем по названиям гибко)
+  RA_HEADERS: {
+    STATUS: ['Статус', 'Сделка.Статус'],
+    SUM: ['Сумма ₽', 'Guests.Сумма ₽', 'RP.Сумма ₽', 'Сумма'],
+    LINE_CONTACT: ['Контакт.Номер линии MANGO OFFICE', 'Номер линии MANGO OFFICE'],
+    LINE_DEAL: ['Сделка.Номер линии MANGO OFFICE', 'Номер линии MANGO OFFICE'],
+    CREATED: ['Дата создания','DATE','Сделка.DATE'],
+    TEL_TAG: ['R.Источник ТЕЛ сделки', 'R.Источник ТЕЛ', 'Источник ТЕЛ сделки', 'Источник ТЕЛ'],
+    BUDGET: ['Бюджет', 'Сделка.Бюджет'],
+  },
+  // что считаем "оплатой/успехом"
+  PAID_RE: /(оплач|успеш|реализ)/i
+};
+
+/** ===== ПУБЛИЧНО: построить отчёт ===== */
+function buildCalltrackingReport() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // 1) Считываем РАБОЧИЙ АМО (только значения, без изменений форматирования)
+  const ra = readRA_(ss);
+
+  // 2) Считываем справочник "КоллТрекинг" (номер → {tag, channel})
+  const dir = readDirectory_(ss);
+
+  // 3) Агрегируем
+  const aggregated = aggregateCalltracking_(ra, dir);
+
+  // 4) Рендер в отчёт (только значения)
+  renderCalltrackingReport_(ss, aggregated, dir);
+}
+
+/** ===== Вспомогательные чтения ===== */
+function readRA_(ss) {
+  const sh = ss.getSheetByName(CT_CFG.RA_SHEET);
+  if (!sh) throw new Error('Нет листа "'+CT_CFG.RA_SHEET+'"');
+
+  // Ищем строку заголовка в первых 5 строках (в РА: секции на 1-й, заголовки на 2-й)
+  const peek = sh.getRange(1,1,Math.min(5, sh.getLastRow()||5), Math.min(100, sh.getLastColumn()||26)).getValues();
+  let headerRow = 1;
+  for (let r=0; r<peek.length; r++) {
+    const row = peek[r].map(String);
+    if (row.includes('ID') && row.some(x => x==='Статус' || x==='Дата создания')) { headerRow = r+1; break; }
+  }
+
+  const lastRow = sh.getLastRow();
+  const lastCol = sh.getLastColumn();
+  if (lastRow < headerRow+1) return { header: [], rows: [] };
+
+  const header = sh.getRange(headerRow, 1, 1, lastCol).getValues()[0].map(String);
+  const data = sh.getRange(headerRow+1, 1, lastRow-headerRow, lastCol).getValues();
+
+  // Индексы нужных колонок
+  const iStatus = findHeaderIndex_(header, CT_CFG.RA_HEADERS.STATUS);
+  const iSum    = findHeaderIndex_(header, CT_CFG.RA_HEADERS.SUM);
+  const iBudget = findHeaderIndex_(header, CT_CFG.RA_HEADERS.BUDGET);
+
+  // В РА две колонки "Номер линии MANGO OFFICE" — для контакта и сделки.
+  // Пытаемся найти канонические, либо берём все совпадения по тексту.
+  const candIdx = [];
+  const iContact = findHeaderIndex_(header, CT_CFG.RA_HEADERS.LINE_CONTACT);
+  if (iContact > -1) candIdx.push(iContact);
+  const iDeal = findHeaderIndex_(header, CT_CFG.RA_HEADERS.LINE_DEAL);
+  if (iDeal > -1) candIdx.push(iDeal);
+  const iCreated = findHeaderIndex_(header, CT_CFG.RA_HEADERS.CREATED);
+  const iTelTag = findHeaderIndex_(header, CT_CFG.RA_HEADERS.TEL_TAG);
+
+  // если канонических нет — соберём все "Номер линии MANGO OFFICE"
+  if (!candIdx.length) {
+    header.forEach((h, i) => { if (String(h).trim() === 'Номер линии MANGO OFFICE') candIdx.push(i); });
+  }
+
+  return { header, rows: data, idx: { status:iStatus, sum:iSum, lines:candIdx, created:iCreated, telTag:iTelTag, budget:iBudget } };
+}
+
+function readDirectory_(ss) {
+  const sh = ss.getSheetByName(CT_CFG.DIRECTORY_SHEET);
+  if (!sh) throw new Error('Нет листа "'+CT_CFG.DIRECTORY_SHEET+'"');
+
+  const v = sh.getDataRange().getValues();
+  if (!v.length) return { byNumber:new Map(), tag2channel:new Map(), tagOrder:[] };
+
+  // Попробуем распознать шапку (или считаем, что 1-я строка — шапка)
+  const header = v[0].map(String);
+  const data = v.slice(1).filter(r => r.some(x => String(x).trim()!==''));
+
+  const iNum = findHeaderIndex_(header, ['НОМЕР','Номер','Контакт.Номер линии MANGO OFFICE','Номер линии','A']) || 0;
+  const iTag = findHeaderIndex_(header, ['Тег','ТЕГ','R.Источник ТЕЛ сделки','ТЕГИ телефона в АМО']) || 1;
+  const iCh  = findHeaderIndex_(header, ['Канал','Название Канала']) || 2;
+
+  const byNumber = new Map();  // '7812317...' -> {tag, channel}
+  const tag2channel = new Map();
+  const tagOrder = [];
+
+  data.forEach(r=>{
+    const num = digits_(r[iNum]);
+    const tag = String(r[iTag]||'').trim();
+    const ch  = normalizeChannel_(String(r[iCh]||'').trim());
+    if (!num || !tag) return;
+    byNumber.set(num, { tag, channel: ch });
+    if (!tag2channel.has(tag)) tag2channel.set(tag, ch);
+    if (!tagOrder.includes(tag)) tagOrder.push(tag);
+  });
+
+  return { byNumber, tag2channel, tagOrder };
+}
+
+/** ===== Агрегация ===== */
+function aggregateCalltracking_(ra, dir) {
+  const byTag = new Map();       // tag -> {leads, paid, revenue}
+  const byChan = new Map();      // channel -> {tags:Set, leads, paid, revenue}
+  const byMonthChan = new Map(); // 'YYYY-MM' -> Map(channel -> {leads, paid, revenue})
+  const allMonths = new Set();
+  const allChannels = new Set();
+
+  // --- ВАЖНО: заранее добавляем все теги и каналы из справочника,
+  // чтобы ничего не «терялось» (например, 2gis_tel), даже если пока нулевые.
+  dir.tagOrder.forEach(tag => {
+    byTag.set(tag, { leads: 0, paid: 0, revenue: 0 });
+    const channel = normalizeChannel_(dir.tag2channel.get(tag) || '(без канала)');
+    allChannels.add(channel);
+    const c = byChan.get(channel) || { tags: new Set(), leads: 0, paid: 0, revenue: 0 };
+    c.tags.add(tag);
+    byChan.set(channel, c);
+  });
+
+  const ilines  = ra.idx.lines;
+  const iStatus = ra.idx.status;
+  const iSum    = ra.idx.sum;
+  const iCreated= ra.idx.created;
+  const iTelTag = ra.idx.telTag;
+  const iBudget = ra.idx.budget;
+
+  // дополнительно добавим все теги, которые уже стоят в РА в колонке V (R.Источник ТЕЛ сделки)
+  if (iTelTag > -1) {
+    const seen = new Set();
+    ra.rows.forEach(r => {
+      const t = cleanTag_(r[iTelTag]);
+      if (!t) return;
+      if (seen.has(t)) return;
+      seen.add(t);
+      if (!byTag.has(t)) byTag.set(t, { leads:0, paid:0, revenue:0 });
+      const ch = normalizeChannel_(dir.tag2channel.get(t) || '(без канала)');
+      allChannels.add(ch);
+      const c = byChan.get(ch) || { tags:new Set(), leads:0, paid:0, revenue:0 };
+      c.tags.add(t);
+      byChan.set(ch, c);
+    });
+  }
+
+  ra.rows.forEach(r => {
+    // 1) Сначала берём тег прямо из РА (колонка V: R.Источник ТЕЛ сделки)
+    let tag = '', channel = '';
+    if (iTelTag > -1) {
+      tag = cleanTag_(r[iTelTag]);
+      if (tag) channel = normalizeChannel_(dir.tag2channel.get(tag) || '');
+    }
+    // 2) Если тега нет — пробуем по номеру линии (контакт/сделка)
+    if (!tag) {
+      for (let k = 0; k < ilines.length; k++) {
+        const cell = r[ilines[k]];
+        const num = pickOneNumber_(cell);
+        if (!num) continue;
+        const rec = dir.byNumber.get(num);
+        if (rec) { tag = rec.tag; channel = rec.channel || ''; break; }
+      }
+    }
+    if (!tag) return; // без тега не считаем как телефонный лид
+
+    const status  = String(iStatus > -1 ? (r[iStatus] || '') : '').trim();
+    const paid    = CT_CFG.PAID_RE.test(status);
+    let amount = toNumber_(iSum > -1 ? r[iSum] : 0);
+    // Если статус успешный/оплачен, а Сумма ₽ (АТ) = 0, берём значение из колонки "Бюджет"
+    if (paid && amount <= 0 && iBudget > -1) {
+      const budgetVal = toNumber_(r[iBudget]);
+      if (budgetVal > 0) amount = budgetVal;
+    }
+
+    // Месяц по дате создания
+    if (iCreated > -1) {
+      const month = monthKey_(r[iCreated]);
+      if (month) {
+        allMonths.add(month);
+        const chKey = normalizeChannel_(channel || '(без канала)');
+        allChannels.add(chKey);
+        const m = byMonthChan.get(month) || new Map();
+        const cell = m.get(chKey) || { leads: 0, paid: 0, revenue: 0 };
+        cell.leads += 1;
+        if (paid) cell.paid += 1;
+        if (amount > 0) cell.revenue += amount;
+        m.set(chKey, cell);
+        byMonthChan.set(month, m);
+      }
+    }
+
+    // По тегу
+    const t = byTag.get(tag) || { leads: 0, paid: 0, revenue: 0 };
+    t.leads += 1;
+    if (paid) t.paid += 1;
+    if (amount > 0) t.revenue += amount;
+    byTag.set(tag, t);
+
+    // По каналу
+    const chKey = normalizeChannel_(channel || '(без канала)');
+    const c = byChan.get(chKey) || { tags: new Set(), leads: 0, paid: 0, revenue: 0 };
+    c.tags.add(tag);
+    c.leads += 1;
+    if (paid) c.paid += 1;
+    if (amount > 0) c.revenue += amount;
+    byChan.set(chKey, c);
+  });
+
+  // --- В плоские таблицы для рендера
+  const tagsTable = [];
+  // Сохраняем порядок вывода по количеству лидов
+  byTag.forEach((v, tag) => {
+    const conv = v.leads ? v.paid / v.leads : 0;
+    const avg  = v.paid ? v.revenue / v.paid : 0;
+    tagsTable.push([tag, v.leads, v.paid, v.revenue, avg, conv]);
+  });
+  tagsTable.sort((a,b)=>b[1]-a[1]);
+
+  const chanTable = [];
+  byChan.forEach((v, ch) => {
+    const conv = v.leads ? v.paid / v.leads : 0;
+    const avg  = v.paid ? v.revenue / v.paid : 0;
+    chanTable.push([ch, [...v.tags].join(', '), v.leads, v.paid, v.revenue, avg, conv]);
+  });
+  chanTable.sort((a,b)=>b[2]-a[2]);
+
+  // Месяц -> Канал (плоская и матрица)
+  const monthlyFlat = [];
+  [...byMonthChan.keys()].sort().forEach(m => {
+    const mMap = byMonthChan.get(m);
+    [...mMap.keys()].sort().forEach(ch => {
+      const v = mMap.get(ch);
+      const conv = v.leads ? v.paid / v.leads : 0;
+      const avg  = v.paid ? v.revenue / v.paid : 0;
+      monthlyFlat.push([m, ch, v.leads, v.paid, v.revenue, avg, conv]);
+    });
+  });
+
+  // Матрица: строки — месяцы, колонки — каналы (значение = лидов)
+  const channelsList = [...allChannels].sort();
+  const monthsList   = [...allMonths].sort();
+  const monthlyMatrix = [];
+  monthsList.forEach(m => {
+    const row = [m];
+    channelsList.forEach(ch => {
+      const mMap = byMonthChan.get(m) || new Map();
+      const v = mMap.get(ch);
+      row.push(v ? v.leads : 0);
+    });
+    monthlyMatrix.push(row);
+  });
+
+  return { tagsTable, chanTable, monthlyFlat, monthlyMatrix, channelsList };
+}
+
+/** ===== Вывод ===== */
+function setSectionTitleValueOnly_(sh, row, col, text){
+  try{
+    // Пишем только в левую верхнюю ячейку, не меняя формат/слияние
+    sh.getRange(row, col).setValue(String(text||''));
+  }catch(e){}
+}
+
+function renderCalltrackingReport_(ss, aggr, dir){
+  const sh = ss.getSheetByName(CT_CFG.REPORT_SHEET) || ss.insertSheet(CT_CFG.REPORT_SHEET);
+
+  // чистим только значения отчёта, пользовательские стили листа сохраняем
+  sh.clearContents();
+
+  // Заголовок листа (не влияет на пользовательские стили в других листах)
+  if (CT_CFG.KEEP_USER_FORMAT){
+    sh.getRange(1,1).setValue('Calltracking — отчёт по звонкам и доходу');
+  } else {
+    sh.getRange(1,1,1,8).merge()
+      .setValue('Calltracking — отчёт по звонкам и доходу')
+      .setFontWeight('bold')
+      .setFontSize(16)
+      .setFontFamily('PT Sans');
+  }
+
+  let r = 3, c = 1; // оставим две строки под заголовок
+
+  if (CT_CFG.SHOW_TAGS) {
+    // Section title for tags summary (row 2)
+    if (CT_CFG.KEEP_USER_FORMAT) setSectionTitleValueOnly_(sh, 2, 1, 'Сводка по тегам (телефонные теги → лиды/оплаты/доход)');
+    else setSectionTitle_(sh, 2, 1, 'Сводка по тегам (телефонные теги → лиды/оплаты/доход)', 8);
+
+    const headTags = ['Тег', 'Лидов (звонков)', 'Оплат', 'Доход ₽', 'Средний чек ₽', 'Конверсия в оплату'];
+    upsertTable_(sh, r, c, headTags, aggr.tagsTable.map(row=>[
+      row[0], row[1], row[2], row[3],
+      safeMoney_(row[3] && row[2] ? row[3]/row[2]:0),
+      row[5]
+    ]));
+    const tagsStartRow = r;
+    const tagsRows     = (aggr.tagsTable.length ? aggr.tagsTable.length+1 : 1);
+    if (!CT_CFG.KEEP_USER_FORMAT){
+      styleTable_(sh, tagsStartRow, c, tagsRows, headTags.length);
+      sh.getRange(tagsStartRow+1, c+3, Math.max(0,tagsRows-1), 1).setNumberFormat('#,##0');
+      sh.getRange(tagsStartRow+1, c+4, Math.max(0,tagsRows-1), 1).setNumberFormat('#,##0.00');
+      sh.getRange(tagsStartRow+1, c+5, Math.max(0,tagsRows-1), 1).setNumberFormat('0.0%');
+      resetDataFontWeight_(sh, tagsStartRow+1, c, Math.max(0,tagsRows-1), headTags.length);
+    }
+    r += (aggr.tagsTable.length ? aggr.tagsTable.length+3 : 3);
+  }
+
+  if (CT_CFG.KEEP_USER_FORMAT) setSectionTitleValueOnly_(sh, r-1, c, 'Сводка по каналам (канал → теги/лиды/доход)');
+  else setSectionTitle_(sh, r-1, c, 'Сводка по каналам (канал → теги/лиды/доход)', 7);
+  const headChan = ['Канал', 'Теги', 'Лидов (звонков)', 'Оплат', 'Доход ₽', 'Средний чек ₽', 'Конверсия в оплату'];
+  const chanStartRow = r;
+  upsertTable_(sh, chanStartRow, c, headChan, aggr.chanTable.map(row=>[
+    row[0], row[1], row[2], row[3], row[4],
+    safeMoney_(row[4] && row[3] ? row[4]/row[3]:0),
+    row[6]
+  ]));
+  const chanRows = (aggr.chanTable.length ? aggr.chanTable.length+1 : 1);
+  if (!CT_CFG.KEEP_USER_FORMAT){
+    styleTable_(sh, chanStartRow, c, chanRows, headChan.length);
+    sh.getRange(chanStartRow+1, c+4, Math.max(0,chanRows-1), 1).setNumberFormat('#,##0');
+    sh.getRange(chanStartRow+1, c+5, Math.max(0,chanRows-1), 1).setNumberFormat('#,##0.00');
+    sh.getRange(chanStartRow+1, c+6, Math.max(0,chanRows-1), 1).setNumberFormat('0.0%');
+    resetDataFontWeight_(sh, chanStartRow+1, c, Math.max(0,chanRows-1), headChan.length);
+  }
+  r += (aggr.chanTable.length ? aggr.chanTable.length+3 : 3);
+
+  // Section title for monthly flat (row above block 3)
+  const headMonFlat = ['Месяц','Канал','Лидов','Оплат','Доход ₽','Средний чек ₽','Конверсия'];
+  if (CT_CFG.KEEP_USER_FORMAT) setSectionTitleValueOnly_(sh, r-1, c, 'Помесячная сводка по каналам');
+  else setSectionTitle_(sh, r-1, c, 'Помесячная сводка по каналам', headMonFlat.length);
+  const flatStartRow = r;
+  const monthlyFlatDisp = aggr.monthlyFlat.map(row => [
+    monthLabelRu_(row[0]), row[1], row[2], row[3], row[4],
+    safeMoney_(row[4] && row[3] ? row[4]/row[3] : 0), row[6]
+  ]);
+  upsertTable_(sh, flatStartRow, c, headMonFlat, monthlyFlatDisp);
+  if (!CT_CFG.KEEP_USER_FORMAT){
+    styleTable_(sh, flatStartRow, c, (monthlyFlatDisp.length?monthlyFlatDisp.length+1:1), headMonFlat.length);
+    if (monthlyFlatDisp.length){
+      sh.getRange(flatStartRow+1, c+4, monthlyFlatDisp.length, 1).setNumberFormat('#,##0');        // Доход ₽
+      sh.getRange(flatStartRow+1, c+5, monthlyFlatDisp.length, 1).setNumberFormat('#,##0.00');     // Средний чек ₽
+      sh.getRange(flatStartRow+1, c+6, monthlyFlatDisp.length, 1).setNumberFormat('0.0%');         // Конверсия
+    }
+    resetDataFontWeight_(sh, flatStartRow+1, c, monthlyFlatDisp.length, headMonFlat.length);
+  }
+  r += (monthlyFlatDisp.length ? monthlyFlatDisp.length + 3 : 3);
+
+  // Section title for monthly matrix (row above block 4)
+  const headMatrix = ['Месяц', ...aggr.channelsList];
+  if (CT_CFG.KEEP_USER_FORMAT) setSectionTitleValueOnly_(sh, r-1, c, 'Тепловая карта: месяцы × каналы (значение = лидов)');
+  else setSectionTitle_(sh, r-1, c, 'Тепловая карта: месяцы × каналы (значение = лидов)', headMatrix.length);
+  const matrixStartRow = r;
+  const monthlyMatrixDisp = aggr.monthlyMatrix.map(row => [ monthLabelRu_(row[0]), ...row.slice(1) ]);
+  upsertTable_(sh, matrixStartRow, c, headMatrix, monthlyMatrixDisp);
+  if (!CT_CFG.KEEP_USER_FORMAT){
+    styleTable_(sh, matrixStartRow, c, (monthlyMatrixDisp.length?monthlyMatrixDisp.length+1:1), headMatrix.length);
+    const matrixRows = (monthlyMatrixDisp.length ? monthlyMatrixDisp.length + 1 : 1);
+    const matrixCols = headMatrix.length;
+    resetDataFontWeight_(sh, matrixStartRow+1, c, Math.max(0,monthlyMatrixDisp.length), headMatrix.length);
+  }
+  const matrixRows = (monthlyMatrixDisp.length ? monthlyMatrixDisp.length + 1 : 1);
+  const matrixCols = headMatrix.length;
+  r += (monthlyMatrixDisp.length ? monthlyMatrixDisp.length + 3 : 3);
+
+  // Создаём/обновляем диаграммы (если их ещё нет), передавая точные позиции таблиц
+  try {
+    // For charts, pass the visible channel table positions
+    const chartsFromChan = {
+      firstRow: chanStartRow,
+      numRows: chanRows,
+      labelCol: c,
+      leadsCol: c+2,
+      revenueCol: c+4
+    };
+    ensureCharts_(sh, aggr, {
+      chanStartRow, chanRows,
+      matrixStartRow, matrixRows, matrixCols,
+      chartsFromChan
+    });
+  } catch(e) {
+    // диаграммы — nice-to-have, падать не должны
+  }
+}
+
+/** ===== Диаграммы (создаём один раз) ===== */
+function ensureCharts_(sh, aggr, ctx){
+  // Удаляем все предыдущие диаграммы на этом листе отчёта, чтобы не было дублей/старых ссылок
+  sh.getCharts().forEach(c => sh.removeChart(c));
+
+  // --- Вспомогательные сплошные диапазоны для диаграмм (чтобы не было разрывов столбцов)
+  // Поместим их далеко вправо и спрячем
+  const HELPER_COL = 50; // колонка AX
+  const NEED_COLS = 6;   // на всякий случай
+  if (sh.getMaxColumns() < HELPER_COL + NEED_COLS) {
+    sh.insertColumnsAfter(sh.getMaxColumns(), HELPER_COL + NEED_COLS - sh.getMaxColumns());
+  }
+
+  // Формируем вспомогательные таблицы напрямую из агрегации,
+  // чтобы не зависеть от форматирования и скрытых столбцов на листе
+  let helperLeads = [['Канал','Лидов']];
+  let helperRevenue = [['Канал','Доход ₽']];
+  if (Array.isArray(aggr.chanTable) && aggr.chanTable.length){
+    aggr.chanTable.forEach(row => {
+      // aggr.chanTable: [channel, tags, leads, paid, revenue, avg, conv]
+      const ch = String(row[0] || '');
+      const leads = Number(row[2] || 0);
+      const revenue = Number(row[4] || 0);
+      helperLeads.push([ch, leads]);
+      helperRevenue.push([ch, revenue]);
+    });
+  }
+  const leadsRows = Math.max(1, helperLeads.length);
+  const revRows   = Math.max(1, helperRevenue.length);
+  sh.getRange(1, HELPER_COL, leadsRows, 2).setValues(helperLeads);
+  sh.getRange(1, HELPER_COL+2, revRows, 2).setValues(helperRevenue);
+  try { sh.hideColumns(HELPER_COL, 4); } catch(e) {}
+  SpreadsheetApp.flush(); // важно: сначала записываем вспомогательные таблицы, затем строим графики
+
+  // --- Prepare color arrays/objects for charts ---
+  // For donut: slices by channel order in helperLeads (skip header)
+  const pieSlices = {};
+  for (let i = 0; i < helperLeads.length - 1; ++i) {
+    const channelName = helperLeads[i + 1][0];
+    pieSlices[i] = { color: colorForChannel_(channelName) };
+  }
+  // For line: colors in order of ctx.matrixCols (skip first col "Месяц")
+  const lineColors = [];
+  if (ctx.matrixCols && ctx.matrixCols > 1) {
+    // The header row for the matrix is at ctx.matrixStartRow
+    try {
+      const matrixHeader = sh.getRange(ctx.matrixStartRow, 1, 1, ctx.matrixCols).getValues()[0];
+      for (let j = 1; j < matrixHeader.length; ++j) {
+        lineColors.push(colorForChannel_(matrixHeader[j]));
+      }
+    } catch (e) {}
+  }
+  SpreadsheetApp.flush();
+
+  // --- DONUT: распределение лидов
+  if (helperLeads.length <= 1) return;
+  const pie = sh.newChart()
+    .setChartType(Charts.ChartType.PIE)
+    .addRange(sh.getRange(1, HELPER_COL, helperLeads.length, 2)) // непрерывный 2-колоночный диапазон
+    .setOption('title','Распределение лидов по каналам (за весь период)')
+    .setOption('legend.position','right')
+    .setOption('titleTextStyle',{fontSize:14,bold:true})
+    .setOption('legend.textStyle',{fontSize:11})
+    .setOption('sliceVisibilityThreshold',0)
+    .setOption('chartArea', {left:20, top:40, width:'85%', height:'80%'})
+    .setOption('pieSliceText','value')
+    .setOption('pieHole', 0.55)
+    .setOption('fontSize', 11)
+    .setOption('slices', pieSlices)
+    .setPosition(ctx.chanStartRow, 9, 0, 0)
+    .build();
+  sh.insertChart(pie);
+
+  // --- COLUMN: доход по каналам
+  if (helperRevenue.length <= 1) return;
+  // Google Sheets не поддерживает индивидуальные цвета для столбцов одной серии,
+  // поэтому используем нейтральный цвет (серый) для всех баров.
+  const bar = sh.newChart()
+    .setChartType(Charts.ChartType.COLUMN)
+    .addRange(sh.getRange(1, HELPER_COL+2, helperRevenue.length, 2)) // непрерывный 2-колоночный диапазон
+    .setOption('title','Доход по каналам (₽, за весь период)')
+    .setOption('legend.position','none')
+    .setOption('titleTextStyle',{fontSize:14,bold:true})
+    .setOption('bar.groupWidth','60%')
+    .setOption('useFirstColumnAsDomain', true)
+    .setOption('hAxis', {title:'Канал', slantedText:true, slantedTextAngle:30, textStyle:{fontSize:11}})
+    .setOption('vAxis', {title:'Доход ₽', gridlines:{color:'#eaeaea'}, textStyle:{fontSize:11}})
+    .setOption('chartArea', {left:40, top:40, width:'80%', height:'70%'})
+    // Ограничение: нельзя раскрасить отдельные бары в одной серии, используем нейтральный цвет
+    .setOption('colors', ['#9E9E9E'])
+    .setPosition(ctx.chanStartRow + Math.max(14, ctx.chanRows+6), 9, 0, 0)
+    .build();
+  sh.insertChart(bar);
+
+  // --- LINE: динамика по месяцам (цвета каналов)
+  if (!(ctx.matrixRows > 1 && ctx.matrixCols > 1)) return;
+  const line = sh.newChart()
+    .setChartType(Charts.ChartType.LINE)
+    .addRange(sh.getRange(ctx.matrixStartRow, 1, ctx.matrixRows, ctx.matrixCols))
+    .setOption('title','Лиды по месяцам по каналам')
+    .setOption('useFirstColumnAsDomain', true)
+    .setOption('legend.position','top')
+    .setOption('curveType','function')
+    .setOption('titleTextStyle',{fontSize:14,bold:true})
+    .setOption('legend.textStyle',{fontSize:11})
+    .setOption('pointSize',6)
+    .setOption('lineWidth',3)
+    .setOption('colors', lineColors)
+    .setOption('hAxis', {title:'Месяц', slantedText:true, slantedTextAngle:20, textStyle:{fontSize:11}})
+    .setOption('vAxis', {title:'Лидов', gridlines:{color:'#eaeaea'}, textStyle:{fontSize:11}})
+    .setOption('chartArea', {left:40, top:40, width:'80%', height:'60%'})
+    .setPosition(ctx.matrixStartRow, 9, 0, 0)
+    .build();
+  sh.insertChart(line);
+}
+function resetDataFontWeight_(sh, row, col, numRows, numCols){
+  if (numRows <= 0 || numCols <= 0) return;
+  try {
+    sh.getRange(row, col, numRows, numCols).setFontWeight('normal');
+  } catch(e) {}
+}
+
+function setSectionTitle_(sh, row, col, text, width){
+  // Section title with blue band background and underline.
+  const w = Math.max(1, width || 6);
+  if (sh.getMaxColumns() < col + w - 1) {
+    sh.insertColumnsAfter(sh.getMaxColumns(), (col + w - 1) - sh.getMaxColumns());
+  }
+  const rng = sh.getRange(row, col, 1, w);
+  try { rng.merge(); } catch(e) {}
+
+  rng.setValue(String(text || ''))
+     .setFontWeight('bold')
+     .setFontSize(14)
+     .setFontFamily('PT Sans')
+     .setHorizontalAlignment('left')
+     .setBackground('#E6F7FF');
+
+  // blue thin underline under section title
+  try {
+    rng.setBorder(null,null,true,null,false,false,'#4A90E2',SpreadsheetApp.BorderStyle.SOLID);
+  } catch(e) {}
+}
+
+/** ===== Утилиты ===== */
+
+function upsertTable_(sh, row, col, header, data){
+  // гарантируем размер, но не чистим стили
+  const needRows = row + data.length;
+  const needCols = col + header.length - 1;
+  if (sh.getMaxRows() < needRows) sh.insertRowsAfter(sh.getMaxRows(), needRows - sh.getMaxRows());
+  if (sh.getMaxColumns() < needCols) sh.insertColumnsAfter(sh.getMaxColumns(), needCols - sh.getMaxColumns());
+
+  sh.getRange(row, col, 1, header.length).setValues([header]);
+  if (data.length) {
+    sh.getRange(row+1, col, data.length, header.length).setValues(data.map(arr=>{
+      // заменяем NaN/undefined на пусто
+      return arr.map(v => (v===null || v===undefined || (typeof v==='number' && !isFinite(v))) ? '' : v);
+    }));
+  }
+  // подчистим «хвост» предыдущих данных только значениями пусто (без стирания форматирования)
+  const after = sh.getLastRow() - (row + data.length);
+  if (after > 0) {
+    const w = header.length;
+    sh.getRange(row+1+data.length, col, after, w).setValues(Array.from({length:after},()=>Array(w).fill('')));
+  }
+}
+
+function findHeaderIndex_(header, names){
+  const norm = header.map(h => String(h||'').trim().toLowerCase());
+  for (const name of names){
+    const n = String(name).trim().toLowerCase();
+    // точное
+    let i = norm.indexOf(n);
+    if (i>-1) return i;
+    // частичное
+    i = norm.findIndex(h => h === n || h.includes(n));
+    if (i>-1) return i;
+  }
+  return -1;
+}
+
+function cleanTag_(v){
+  const s = String(v||'').trim();
+  if (!s) return '';
+  // если несколько значений, берём первое непустое; теги вроде osn_tel/ya_tel/2gis_tel без пробелов
+  const first = s.split(/[;,\s]+/).find(Boolean);
+  return first || '';
+}
+
+function digits_(v){
+  if (v===null || v===undefined) return '';
+  const s = String(v);
+  const d = s.replace(/\D/g,'');
+  if (!d) return '';
+  // манго-номера обычно 11 символов, но оставим как есть
+  return d;
+}
+
+function pickOneNumber_(cell){
+  // может быть несколько через запятую/точку с запятой
+  const s = String(cell||'');
+  const parts = s.split(/[;,]/).map(x=>x.trim()).filter(Boolean);
+  for (const p of parts){
+    const d = digits_(p);
+    if (d) return d;
+  }
+  return digits_(s);
+}
+
+function toNumber_(v){
+  if (v===null || v===undefined || v==='') return 0;
+  const s = String(v).replace(/\s/g,'').replace(',','.');
+  const n = Number(s);
+  return isNaN(n) ? 0 : n;
+}
+
+function safeMoney_(n){ return Math.round((n||0)*100)/100; }
+
+function monthKey_(v){
+  if (!v) return '';
+  // Если это уже дата
+  if (Object.prototype.toString.call(v) === '[object Date]' && !isNaN(v)) {
+    const y=v.getFullYear(), m=('0'+(v.getMonth()+1)).slice(-2);
+    return y+'-'+m;
+  }
+  const s = String(v).trim();
+  // Форматы dd.mm.yyyy, dd-mm-yyyy, yyyy-mm-dd
+  let m = s.match(/^(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{2,4})/);
+  if (m){
+    let y = m[3]; if (y.length===2) y = '20'+y;
+    const mo = ('0'+m[2]).slice(-2);
+    return y+'-'+mo;
+  }
+  m = s.match(/^(\d{4})[.\-\/](\d{1,2})/);
+  if (m){
+    return m[1]+'-'+('0'+m[2]).slice(-2);
+  }
+  const t = Date.parse(s);
+  if (!isNaN(t)){
+    const d = new Date(t);
+    const yy=d.getFullYear(), mm=('0'+(d.getMonth()+1)).slice(-2);
+    return yy+'-'+mm;
+  }
+  return '';
+}
+
+/** ===== Триггер на каждый час (опционально) ===== */
+function setHourlyTrigger_Calltracking(){
+  // Удаляем предыдущие дубликаты
+  ScriptApp.getProjectTriggers().forEach(t=>{
+    if (t.getHandlerFunction()==='buildCalltrackingReport') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('buildCalltrackingReport').timeBased().everyHours(1).create();
+}
+function monthLabelRu_(key){
+  // key формата YYYY-MM
+  const m = /^\d{4}-\d{2}$/.exec(String(key||''));
+  if (!m) {
+    const t = String(key||'');
+    return t;
+  }
+  const y = key.slice(2,4);                   // две последние цифры года
+  const mi = parseInt(key.slice(5,7),10) - 1;
+  const RU = ['ЯНВ','ФЕВ','МАР','АПР','МАЙ','ИЮН','ИЮЛ','АВГ','СЕН','ОКТ','НОЯ','ДЕК'];
+  // Используем «умную» кавычку (U+2019), чтобы Google Charts не воспринимал это как дату
+  return `${RU[mi]} ’${y}`; // пример: МАЙ ’25
+}
+
+// Улучшения: отчёт теперь с более эстетичными форматами, полосатостью и диаграммами
+function normalizeChannel_(s){
+  const t = String(s||'').trim();
+  if (/^2\s*gis$/i.test(t) || /^2гис$/i.test(t) || /^2gis$/i.test(t)) return '2Гис';
+  return t;
+}
+function applyGridBorders_(range){
+  try{
+    const sh = range.getSheet();
+    const r = range.getRow(), c = range.getColumn(), nr = range.getNumRows(), nc = range.getNumColumns();
+
+    // Clear any existing borders inside the block first
+    range.setBorder(false,false,false,false,false,false);
+
+    // 1) Dotted inner grid
+    range.setBorder(true,true,true,true,true,true,'#9E9E9E',SpreadsheetApp.BorderStyle.DOTTED);
+
+    // 2) Thin solid outer frame
+    sh.getRange(r, c, 1, nc)
+      .setBorder(true,true,true,true,false,false,'#666666',SpreadsheetApp.BorderStyle.SOLID);
+    sh.getRange(r+nr-1, c, 1, nc)
+      .setBorder(true,true,true,true,false,false,'#666666',SpreadsheetApp.BorderStyle.SOLID);
+    sh.getRange(r, c, nr, 1)
+      .setBorder(true,true,true,true,false,false,'#666666',SpreadsheetApp.BorderStyle.SOLID);
+    sh.getRange(r, c+nc-1, nr, 1)
+      .setBorder(true,true,true,true,false,false,'#666666',SpreadsheetApp.BorderStyle.SOLID);
+  }catch(e){}
+}
+
+function styleTable_(sh, startRow, startCol, numRows, numCols){
+  if (CT_CFG.KEEP_USER_FORMAT) return;
+  if (numRows <= 0 || numCols <= 0) return;
+
+  const headerBg = '#E6F7FF';
+  const evenBg   = '#FFFFFF';
+  const oddBg    = '#F8FCFF';
+
+  const full = sh.getRange(startRow, startCol, numRows, numCols);
+  full.setFontFamily('PT Sans').setFontSize(12).setFontWeight('normal');
+
+  // Header row
+  const head = sh.getRange(startRow, startCol, 1, numCols);
+  head.setFontWeight('bold')
+      .setBackground(headerBg)
+      .setFontFamily('PT Sans');
+
+  // Thin underline under header
+  try {
+    head.setBorder(null,null,true,null,false,false,'#4A90E2',SpreadsheetApp.BorderStyle.SOLID);
+  } catch(e) {}
+
+  // Zebra backgrounds for data rows
+  const dataRows = Math.max(0, numRows - 1);
+  if (dataRows > 0){
+    const dataRng = sh.getRange(startRow+1, startCol, dataRows, numCols);
+    const bgs = [];
+    for (let r=0; r<dataRows; r++){
+      bgs.push(Array.from({length:numCols}, ()=> (r % 2 === 0) ? oddBg : evenBg));
+    }
+    dataRng.setBackgrounds(bgs).setFontFamily('PT Sans');
+  }
+
+  // Apply dotted inner grid + thin outer frame
+  applyGridBorders_(sh.getRange(startRow, startCol, numRows, numCols));
+}
