@@ -12,19 +12,33 @@ const CONFIG = {
   
   // ===== ОСНОВНОЙ СКРИПТ СБОРА ДАННЫХ =====
   mainScript: {
-    SHEETS: {
-      NEW: 'Амо Выгрузка',
-      FULL: 'Выгрузка Амо Полная', 
-      SITE: 'Заявки с Сайта',
-      RES: 'Reserves RP',
-      GUE: 'Guests RP',
-      CALL: 'КоллТрекинг',
-      OUT: 'РАБОЧИЙ АМО',
-      DIAG: '_DIAG',
-      NEW_ONLY: 'НОВЫЕ',
-      PROBLEM: 'ПРОБЛЕМНЫЕ',
-      LOG: 'LOG'
-    },
+    // ===== ОСНОВНЫЕ ЛИСТЫ ДАННЫХ =====
+  SHEETS: {
+    // Источники данных AmoCRM
+    AMO_EXPORT: 'Амо Выгрузка',           // Первый лист экспорта AmoCRM
+    AMO_FULL: 'Выгрузка Амо Полная',      // Полный лист экспорта AmoCRM
+    
+    // Дополнительные источники данных
+    SITE_FORMS: 'Заявки с Сайта',         // Заявки с форм сайта
+    RESERVES: 'Reserves RP',              // Данные по резервам
+    GUESTS: 'Guests RP',                  // Данные по гостям
+    CALL_TRACKING: 'КоллТрекинг',         // Данные колл-трекинга
+    
+    // Рабочие листы системы
+    OUT: 'РАБОЧИЙ АМО',                   // Основной рабочий лист с объединёнными данными
+    
+    // Аналитические отчёты
+    REFUSAL_ANALYSIS: 'Причина отказов',
+    CHANNEL_ANALYSIS: 'СРАВНИТЕЛЬНЫЙ АНАЛИЗ',
+    FIRST_TOUCH: 'FIRST-TOUCH ANALYSIS',
+    AMO_SUMMARY: 'СВОДНАЯ АНАЛИТИКА AMOcrm',
+    DAILY_STATS: 'Ежедневная статистика',
+    
+    // Служебные листы
+    MAIN_DASHBOARD: 'Главная',
+    LOGS: 'LOG',
+    DIAGNOSTICS: '_DIAG'
+  },
     KEY: 'Сделка.ID',
     CLOSED_RE: /(закры|успеш|неуспеш|оплач)/i,
     PHONE_SPLIT_RE: /[;,]/,

@@ -283,9 +283,44 @@ function validateConfiguration_() {
  * @private
  */
 function createAllSheets_() {
-  const requiredSheets = Object.values(CONFIG.SHEETS);
+  // Создаём основные листы данных
+  const dataSheets = [
+    'Амо Выгрузка',
+    'Выгрузка Амо Полная', 
+    'Заявки с Сайта',
+    'Reserves RP',
+    'Guests RP',
+    'КоллТрекинг',
+    'РАБОЧИЙ АМО'
+  ];
   
-  requiredSheets.forEach(sheetName => {
+  // Создаём аналитические листы
+  const analyticsSheets = [
+    'Главная',
+    'Ежедневная статистика',
+    'Причина отказов', 
+    'СРАВНИТЕЛЬНЫЙ АНАЛИЗ',
+    'FIRST-TOUCH ANALYSIS',
+    'СВОДНАЯ АНАЛИТИКА AMOcrm',
+    'Лиды по каналам',
+    'UTM аналитика',
+    'Анализ менеджеров',
+    'КоллТрекинг',
+    'Сравнение месяцев',
+    'Клиентская аналитика',
+    'Анализ броней',
+    'Beauty Analytics'
+  ];
+  
+  // Создаём служебные листы
+  const serviceSheets = [
+    'LOG',
+    '_DIAG'
+  ];
+  
+  const allSheets = [...dataSheets, ...analyticsSheets, ...serviceSheets];
+  
+  allSheets.forEach(sheetName => {
     try {
       getOrCreateSheet_(sheetName);
       logInfo_('SHEET_CREATE', `Лист "${sheetName}" создан или уже существует`);
@@ -936,7 +971,7 @@ function buildEnrichedData(canonized, siteTable, resAgg, gueAgg, ctMap, CFG) {
  * Рендеринг в рабочий лист
  */
 function renderToWorkingSheet(ss, CFG, header, rows) {
-  const outputSheet = getOrCreateSheet_(CFG.SHEETS.OUT);
+  const outputSheet = getOrCreateSheet_('РАБОЧИЙ АМО');
   
   // Очищаем лист
   outputSheet.clear();
@@ -951,7 +986,7 @@ function renderToWorkingSheet(ss, CFG, header, rows) {
     outputSheet.getRange(2, 1, rows.length, header.length).setValues(rows);
   }
   
-  logInfo_('RENDER', `Записано ${rows.length} строк в лист "${CFG.SHEETS.OUT}"`);
+  logInfo_('RENDER', `Записано ${rows.length} строк в лист "РАБОЧИЙ АМО"`);
 }
 
 /**
@@ -960,7 +995,7 @@ function renderToWorkingSheet(ss, CFG, header, rows) {
 function updateTimeOnlyOnWorking() {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const workingSheet = ss.getSheetByName(CONFIG.SHEETS.OUT);
+    const workingSheet = ss.getSheetByName('РАБОЧИЙ АМО');
     
     if (!workingSheet) {
       logWarning_('TIME_UPDATE', 'Рабочий лист не найден');
@@ -992,8 +1027,8 @@ function updateTimeOnlyOnWorking() {
 function updateCalltrackingOnWorking() {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const workingSheet = ss.getSheetByName(CONFIG.SHEETS.OUT);
-    const callSheet = ss.getSheetByName(CONFIG.SHEETS.CALL);
+    const workingSheet = ss.getSheetByName('РАБОЧИЙ АМО');
+    const callSheet = ss.getSheetByName('КоллТрекинг');
     
     if (!workingSheet || !callSheet) {
       logWarning_('CT_UPDATE', 'Рабочий лист или лист колл-трекинга не найден');
@@ -1004,7 +1039,7 @@ function updateCalltrackingOnWorking() {
     if (lastRow <= 1) return;
     
     // Получаем карту колл-трекинга
-    const callTable = readTable(ss, CONFIG.SHEETS.CALL);
+    const callTable = readTable(ss, 'КоллТрекинг');
     const ctMap = buildCalltrackingMap(callTable);
     
     if (ctMap.size === 0) return;
@@ -1081,7 +1116,7 @@ function updateDailyStatistics() {
     logInfo_('DAILY_STATS', 'Начало обновления ежедневной статистики');
     
     // Получаем данные из рабочего листа
-    const workingData = getSheetData_(CONFIG.SHEETS.OUT);
+    const workingData = getSheetData_('РАБОЧИЙ АМО');
     if (workingData.rows.length === 0) {
       logWarning_('DAILY_STATS', 'Нет данных для анализа');
       return;

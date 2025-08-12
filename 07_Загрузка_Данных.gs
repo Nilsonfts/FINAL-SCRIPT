@@ -94,53 +94,40 @@ function processAmoCrmSheetsData_() {
   let totalRecords = 0;
   
   try {
-    // Используем существующую логику из основного скрипта
-    const CFG = CONFIG.mainScript;
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    logInfo_('DATA_SYNC', 'Начало обработки данных из листов AmoCRM');
     
-    // Читаем все таблицы
-    const amoTable = readTable(ss, CFG.SHEETS.NEW);
-    const amoFullTable = readTable(ss, CFG.SHEETS.FULL);
-    const siteTable = readTable(ss, CFG.SHEETS.SITE);
-    const resTable = readTable(ss, CFG.SHEETS.RES);
-    const gueTable = readTable(ss, CFG.SHEETS.GUE);
-    const callTable = readTable(ss, CFG.SHEETS.CALL);
+    // 1. Читаем основные таблицы AmoCRM
+    const amoSheet = spreadsheet.getSheetByName('Амо Выгрузка');
+    const amoFullSheet = spreadsheet.getSheetByName('Выгрузка Амо Полная');
     
-    // Объединяем таблицы AmoCRM
-    let tables = [];
-    if (amoTable.rows.length > 0) tables.push(amoTable);
-    if (amoFullTable.rows.length > 0) tables.push(amoFullTable);
-    if (siteTable.rows.length > 0) tables.push(siteTable);
-    
-    if (tables.length === 0) {
-      logInfo_('DATA_SYNC', 'Нет данных для обработки');
+    if (!amoSheet && !amoFullSheet) {
+      logWarning_('DATA_SYNC', 'Не найдены листы AmoCRM для обработки');
       return { success: true, records: 0, error: null };
     }
     
-    // Объединяем по ключевому полю
-    const merged = mergeByKey(tables, CFG.KEY);
+    // 2. Объединяем данные из двух источников AmoCRM
+    const unifiedData = unifyAmoCrmData_(amoSheet, amoFullSheet);
     
-    // Канонизируем заголовки
-    const canonized = canonHeaders(merged, CFG.MAP);
+    // 3. Обогащаем данными из дополнительных источников
+    const enrichedData = enrichWithAdditionalData_(unifiedData);
     
-    // Строим агрегаты для обогащения
-    const phoneIdx = findColumnIndex(canonized.header, ['Телефон', 'Phone']);
-    const resAgg = buildAggregates(resTable.rows, phoneIdx);
-    const gueAgg = buildAggregates(gueTable.rows, phoneIdx);
-    const ctMap = buildCalltrackingMap(callTable);
+    // 4. Сохраняем в рабочий лист
+    const workingSheet = getOrCreateSheet_('РАБОЧИЙ АМО');
+    workingSheet.clear();
     
-    // Обогащаем данные
-    const enriched = buildEnrichedData(canonized, siteTable, resAgg, gueAgg, ctMap, CFG);
+    if (enrichedData.header.length > 0) {
+      workingSheet.getRange(1, 1, 1, enrichedData.header.length).setValues([enrichedData.header]);
+      applyHeaderStyle_(workingSheet.getRange(1, 1, 1, enrichedData.header.length));
+    }
     
-    // Преобразуем заголовки для отображения
-    const displayHeader = enriched.headerOrderedRaw.map(humanizeHeader);
+    if (enrichedData.rows.length > 0) {
+      workingSheet.getRange(2, 1, enrichedData.rows.length, enrichedData.header.length).setValues(enrichedData.rows);
+      applyDataStyle_(workingSheet.getRange(2, 1, enrichedData.rows.length, enrichedData.header.length));
+    }
     
-    // Сохраняем в рабочий лист
-    renderToWorkingSheet(ss, CFG, displayHeader, enriched.rows);
+    totalRecords = enrichedData.rows.length;
     
-    totalRecords = enriched.rows.length;
-    
-    logInfo_('DATA_SYNC', `Обработано и объединено ${totalRecords} записей`);
+    logInfo_('DATA_SYNC', `Обработано и объединено ${totalRecords} записей AmoCRM`);
     
     return {
       success: true,
@@ -156,6 +143,305 @@ function processAmoCrmSheetsData_() {
       error: error.message
     };
   }
+}
+
+/**
+ * Объединяет данные из "Амо Выгрузка" и "Выгрузка Амо Полная"
+ * @param {Sheet} amoSheet - Лист "Амо Выгрузка"  
+ * @param {Sheet} amoFullSheet - Лист "Выгрузка Амо Полная"
+ * @returns {Object} Объединённые данные
+ * @private
+ */
+function unifyAmoCrmData_(amoSheet, amoFullSheet) {
+  const unifiedRecords = new Map(); // Используем ID как ключ для избежания дублей
+  const unifiedHeader = new Set();
+  
+  // Добавляем данные из "Амо Выгрузка"
+  if (amoSheet && amoSheet.getLastRow() > 1) {
+    const amoData = amoSheet.getDataRange().getValues();
+    const amoHeader = amoData[0];
+    const amoRows = amoData.slice(1);
+    
+    // Добавляем заголовки
+    amoHeader.forEach(h => unifiedHeader.add(String(h)));
+    
+    // Находим индекс ID
+    const idIdx = amoHeader.findIndex(h => String(h).includes('ID') || String(h).includes('id'));
+    
+    amoRows.forEach(row => {
+      const dealId = idIdx >= 0 ? String(row[idIdx] || '') : '';
+      if (dealId) {
+        const recordObj = {};
+        amoHeader.forEach((header, idx) => {
+          recordObj[String(header)] = row[idx] || '';
+        });
+        unifiedRecords.set(dealId, recordObj);
+      }
+    });
+    
+    logInfo_('DATA_SYNC', `Добавлено ${amoRows.length} записей из "Амо Выгрузка"`);
+  }
+  
+  // Добавляем/объединяем данные из "Выгрузка Амо Полная"
+  if (amoFullSheet && amoFullSheet.getLastRow() > 1) {
+    const fullData = amoFullSheet.getDataRange().getValues();
+    const fullHeader = fullData[0];
+    const fullRows = fullData.slice(1);
+    
+    // Добавляем новые заголовки
+    fullHeader.forEach(h => unifiedHeader.add(String(h)));
+    
+    // Находим индекс ID
+    const idIdx = fullHeader.findIndex(h => String(h).includes('ID') || String(h).includes('id'));
+    
+    let addedCount = 0;
+    let updatedCount = 0;
+    
+    fullRows.forEach(row => {
+      const dealId = idIdx >= 0 ? String(row[idIdx] || '') : '';
+      if (dealId) {
+        if (unifiedRecords.has(dealId)) {
+          // Обновляем существующую запись
+          const existingRecord = unifiedRecords.get(dealId);
+          fullHeader.forEach((header, idx) => {
+            const headerStr = String(header);
+            const newValue = row[idx];
+            if (newValue && String(newValue).trim() !== '') {
+              existingRecord[headerStr] = newValue;
+            }
+          });
+          updatedCount++;
+        } else {
+          // Добавляем новую запись
+          const recordObj = {};
+          fullHeader.forEach((header, idx) => {
+            recordObj[String(header)] = row[idx] || '';
+          });
+          unifiedRecords.set(dealId, recordObj);
+          addedCount++;
+        }
+      }
+    });
+    
+    logInfo_('DATA_SYNC', `Из "Выгрузка Амо Полная": добавлено ${addedCount}, обновлено ${updatedCount} записей`);
+  }
+  
+  // Преобразуем в формат таблицы
+  const headerArray = Array.from(unifiedHeader);
+  const rowsArray = Array.from(unifiedRecords.values()).map(record => {
+    return headerArray.map(header => record[header] || '');
+  });
+  
+  return {
+    header: headerArray,
+    rows: rowsArray
+  };
+}
+
+/**
+ * Обогащает данные AmoCRM данными из дополнительных источников
+ * @param {Object} amocrmData - Объединённые данные AmoCRM
+ * @returns {Object} Обогащённые данные
+ * @private
+ */
+function enrichWithAdditionalData_(amocrmData) {
+  try {
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    
+    // Читаем дополнительные источники
+    const reservesSheet = spreadsheet.getSheetByName('Reserves RP');
+    const guestsSheet = spreadsheet.getSheetByName('Guests RP');
+    const formsSheet = spreadsheet.getSheetByName('Заявки с Сайта'); 
+    const callsSheet = spreadsheet.getSheetByName('КоллТрекинг');
+    
+    // Создаём карты для быстрого поиска
+    const reservesMap = buildReservesMap_(reservesSheet);
+    const guestsMap = buildGuestsMap_(guestsSheet);
+    const formsMap = buildFormsMap_(formsSheet);
+    const callsMap = buildCallsMap_(callsSheet);
+    
+    // Добавляем новые столбцы в заголовок
+    const enrichedHeader = [...amocrmData.header];
+    const additionalColumns = [
+      'Res.Визиты', 'Res.Сумма', 'Res.Статус',
+      'Gue.Визиты', 'Gue.Общая сумма', 'Gue.Первый визит',
+      'Источник ТЕЛ', 'Канал ТЕЛ',
+      'TIME', 'Время обработки'
+    ];
+    
+    additionalColumns.forEach(col => {
+      if (!enrichedHeader.includes(col)) {
+        enrichedHeader.push(col);
+      }
+    });
+    
+    // Находим индексы ключевых полей
+    const phoneIdx = findColumnIndex(amocrmData.header, ['Телефон', 'Контакт.Телефон', 'Phone']);
+    const timeNow = getCurrentDateMoscow_().toLocaleString();
+    
+    // Обогащаем каждую строку
+    const enrichedRows = amocrmData.rows.map(row => {
+      const enrichedRow = [...row];
+      
+      // Дополняем до нужной длины
+      while (enrichedRow.length < enrichedHeader.length) {
+        enrichedRow.push('');
+      }
+      
+      // Получаем телефон для поиска
+      const phone = phoneIdx >= 0 ? cleanPhone(row[phoneIdx]) : '';
+      
+      if (phone) {
+        // Обогащение данными Reserves
+        if (reservesMap.has(phone)) {
+          const resData = reservesMap.get(phone);
+          enrichedRow[enrichedHeader.indexOf('Res.Визиты')] = resData.visits || '';
+          enrichedRow[enrichedHeader.indexOf('Res.Сумма')] = resData.sum || '';
+          enrichedRow[enrichedHeader.indexOf('Res.Статус')] = resData.status || '';
+        }
+        
+        // Обогащение данными Guests
+        if (guestsMap.has(phone)) {
+          const gueData = guestsMap.get(phone);
+          enrichedRow[enrichedHeader.indexOf('Gue.Визиты')] = gueData.visits || '';
+          enrichedRow[enrichedHeader.indexOf('Gue.Общая сумма')] = gueData.totalSum || '';
+          enrichedRow[enrichedHeader.indexOf('Gue.Первый визит')] = gueData.firstVisit || '';
+        }
+        
+        // Обогащение колл-трекингом
+        if (callsMap.has(phone)) {
+          const callData = callsMap.get(phone);
+          enrichedRow[enrichedHeader.indexOf('Источник ТЕЛ')] = callData.source || '';
+          enrichedRow[enrichedHeader.indexOf('Канал ТЕЛ')] = callData.channel || '';
+        }
+      }
+      
+      // Добавляем время обработки
+      enrichedRow[enrichedHeader.indexOf('TIME')] = timeNow;
+      enrichedRow[enrichedHeader.indexOf('Время обработки')] = timeNow;
+      
+      return enrichedRow;
+    });
+    
+    logInfo_('DATA_SYNC', `Данные обогащены дополнительной информацией`);
+    
+    return {
+      header: enrichedHeader,
+      rows: enrichedRows
+    };
+    
+  } catch (error) {
+    logError_('DATA_SYNC', 'Ошибка обогащения данных', error);
+    return amocrmData; // Возвращаем исходные данные при ошибке
+  }
+}
+
+/**
+ * Создаёт карту данных из Reserves RP
+ * @private
+ */
+function buildReservesMap_(sheet) {
+  const map = new Map();
+  if (!sheet || sheet.getLastRow() <= 1) return map;
+  
+  try {
+    const data = sheet.getDataRange().getValues();
+    const header = data[0];
+    const phoneIdx = header.findIndex(h => String(h).toLowerCase().includes('телефон'));
+    
+    if (phoneIdx >= 0) {
+      data.slice(1).forEach(row => {
+        const phone = cleanPhone(row[phoneIdx]);
+        if (phone) {
+          map.set(phone, {
+            visits: row[header.findIndex(h => String(h).includes('заявки'))] || '',
+            sum: row[header.findIndex(h => String(h).includes('Счёт'))] || '',
+            status: row[header.findIndex(h => String(h).includes('Статус'))] || ''
+          });
+        }
+      });
+    }
+  } catch (error) {
+    logWarning_('DATA_SYNC', 'Ошибка построения карты Reserves', error);
+  }
+  
+  return map;
+}
+
+/**
+ * Создаёт карту данных из Guests RP  
+ * @private
+ */
+function buildGuestsMap_(sheet) {
+  const map = new Map();
+  if (!sheet || sheet.getLastRow() <= 1) return map;
+  
+  try {
+    const data = sheet.getDataRange().getValues();
+    const header = data[0];
+    const phoneIdx = header.findIndex(h => String(h).toLowerCase().includes('телефон'));
+    
+    if (phoneIdx >= 0) {
+      data.slice(1).forEach(row => {
+        const phone = cleanPhone(row[phoneIdx]);
+        if (phone) {
+          map.set(phone, {
+            visits: row[header.findIndex(h => String(h).includes('визитов'))] || '',
+            totalSum: row[header.findIndex(h => String(h).includes('Общая сумма'))] || '',
+            firstVisit: row[header.findIndex(h => String(h).includes('Первый визит'))] || ''
+          });
+        }
+      });
+    }
+  } catch (error) {
+    logWarning_('DATA_SYNC', 'Ошибка построения карты Guests', error);
+  }
+  
+  return map;
+}
+
+/**
+ * Создаёт карту данных из форм сайта
+ * @private  
+ */
+function buildFormsMap_(sheet) {
+  const map = new Map();
+  if (!sheet || sheet.getLastRow() <= 1) return map;
+  
+  // Пока что возвращаем пустую карту, логика будет добавлена позже
+  return map;
+}
+
+/**
+ * Создаёт карту колл-трекинга
+ * @private
+ */
+function buildCallsMap_(sheet) {
+  const map = new Map();
+  if (!sheet || sheet.getLastRow() <= 1) return map;
+  
+  try {
+    const data = sheet.getDataRange().getValues();
+    const header = data[0];
+    
+    // Ищем индексы столбцов по структуре: A-Номер линии, B-Источник, C-Канал
+    data.slice(1).forEach(row => {
+      const phoneNumber = String(row[0] || '').trim(); // A - Номер линии MANGO OFFICE
+      const source = String(row[1] || '').trim();      // B - R.Источник ТЕЛ сделки  
+      const channel = String(row[2] || '').trim();     // C - Название Канала
+      
+      if (phoneNumber && source) {
+        map.set(phoneNumber, {
+          source: source,
+          channel: channel
+        });
+      }
+    });
+  } catch (error) {
+    logWarning_('DATA_SYNC', 'Ошибка построения карты колл-трекинга', error);
+  }
+  
+  return map;
 }
 
 /**
@@ -249,7 +535,7 @@ function mergeAndEnrichData_() {
     // Здесь можно добавить дополнительные этапы обработки
     
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const workingSheet = ss.getSheetByName(CONFIG.SHEETS.OUT);
+    const workingSheet = ss.getSheetByName('РАБОЧИЙ АМО');
     
     if (!workingSheet) {
       throw new Error('Не найден рабочий лист с объединёнными данными');
