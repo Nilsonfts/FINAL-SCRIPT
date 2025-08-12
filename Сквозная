@@ -1,0 +1,390 @@
+/**********************************************************
+ * СКВОЗНАЯ АНАЛИТИКА (End-to-End) для Google Sheets
+ * Источники: "РАБОЧИЙ АМО" + "Расходы маркетинга" + "Guests RP"
+ * Дашборд рендерится на лист "СКВОЗНАЯ АНАЛИТИКА"
+ * Шрифт: PT Sans
+ **********************************************************/
+const E2E = {
+  FONT: 'PT Sans',
+  // Листы
+  SHEETS: {
+    DEALS: 'РАБОЧИЙ АМО',
+    SPEND: 'Расходы маркетинга',   // Дата | Канал | Расход ₽
+    GUESTS: 'Guests RP',           // Телефон | TOTAL_AMOUNT/Общая сумма/Сумма
+    DASH: 'СКВОЗНАЯ АНАЛИТИКА 2'
+  },
+  // Успешные статусы
+  SUCCESS: ['Оплачено','Успешно в РП','Успешно реализовано'],
+  // Синонимы колонок
+  COLS: {
+    created: ['Дата создания','DATE','Сделка.Дата создания'],
+    status:  ['Статус','Сделка.Статус'],
+    budget:  ['Бюджет','Сделка.Бюджет'],
+    sumAny:  ['Сумма ₽'], // возьмём ПОСЛЕДНЮЮ "Сумма ₽" справа (AX)
+    telTag:  ['R.Источник ТЕЛ сделки','Источник ТЕЛ сделки'],
+    utm:     ['UTM_SOURCE','utm_source'],
+    phone:   ['Телефон','Контакт.Телефон','Phone'],
+    // формы/признаки визита с сайта (для "прямой сайт")
+    lastForm:['Последняя заявка','Site.Последняя заявка'],
+    formId:  ['FORMID'],
+    formNm:  ['FORMNAME'],
+    ref:     ['REFERER'],
+    date:    ['DATE']
+  },
+  // Синонимы расходов
+  SPEND_COLS: {
+    date:   ['Дата','Date'],
+    chan:   ['Канал','Channel'],
+    cost:   ['Расход ₽','Spend','Расход']
+  },
+  // Синонимы Guests RP
+  GUESTS_COLS: {
+    phone: ['Телефон','Phone'],
+    total: ['TOTAL_AMOUNT','Общая сумма','Сумма','TOTAL']
+  }
+};
+
+/********************* ПУБЛИЧНО **************************/
+function buildE2E(){
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // 1) Источники
+  const deals = readSheet_(ss, E2E.SHEETS.DEALS);
+  const spend = readSheet_(ss, E2E.SHEETS.SPEND);
+  const guests= readSheet_(ss, E2E.SHEETS.GUESTS);
+
+  // 2) Индексы сделок
+  const i = {
+    created: findCol_(deals.header, E2E.COLS.created),
+    status:  findCol_(deals.header, E2E.COLS.status),
+    budget:  findCol_(deals.header, E2E.COLS.budget),
+    telTag:  findCol_(deals.header, E2E.COLS.telTag),
+    utm:     findCol_(deals.header, E2E.COLS.utm),
+    phone:   findCol_(deals.header, E2E.COLS.phone),
+    lastForm:findCol_(deals.header, E2E.COLS.lastForm),
+    formId:  findCol_(deals.header, E2E.COLS.formId),
+    formNm:  findCol_(deals.header, E2E.COLS.formNm),
+    ref:     findCol_(deals.header, E2E.COLS.ref),
+    date:    findCol_(deals.header, E2E.COLS.date),
+    sumAX:   findRightmost_(deals.header, E2E.COLS.sumAny)
+  };
+
+  // 3) Расходы по каналам и по месяцам
+  const sIdx = {
+    date: findCol_(spend.header, E2E.SPEND_COLS.date),
+    chan: findCol_(spend.header, E2E.SPEND_COLS.chan),
+    cost: findCol_(spend.header, E2E.SPEND_COLS.cost)
+  };
+  const costByChannel = new Map();   // chan -> cost
+  const costByMonth   = new Map();   // YYYY-MM -> cost
+  spend.rows.forEach(r=>{
+    const c = normalizeChannelName_(r[sIdx.chan]);
+    const v = toNum_(r[sIdx.cost]);
+    const m = ymKey_(r[sIdx.date]).key;
+    incMap_(costByChannel, c, v);
+    incMap_(costByMonth, m, v);
+  });
+
+  // 4) Guests RP: телефон -> total (LTV-на-текущую-дату)
+  const gIdx = {
+    phone: findCol_(guests.header, E2E.GUESTS_COLS.phone),
+    total: findCol_(guests.header, E2E.GUESTS_COLS.total)
+  };
+  const ltvByPhone = new Map();
+  guests.rows.forEach(r=>{
+    const p = cleanPhone_(r[gIdx.phone]); if (!p) return;
+    const v = toNum_(r[gIdx.total]);
+    // возьмём максимум на всякий случай
+    ltvByPhone.set(p, Math.max(v, ltvByPhone.get(p)||0));
+  });
+
+  // 5) Проход по сделкам
+  let totalLeads = 0, totalSuccDeals = 0, totalRevenue = 0;
+  const firstSuccessOfPhone = new Map(); // phone -> {date, channel}
+  const chanAgg = new Map(); // chan -> {leads, succDeals, revenue, phones:Set() }
+  const monthAgg = new Map();// ym -> {leads, succDeals, revenue}
+
+  deals.rows.forEach(r=>{
+    const created = r[i.created]; if (!created) return;
+    const status  = normalizeStatus_(r[i.status]);
+    const ok      = E2E.SUCCESS.includes(status);
+    const phone   = cleanPhone_(r[i.phone]);
+    const chan    = pickChannel_(r, i);
+    const ym      = ymKey_(created).key;
+
+    // глобальные
+    totalLeads++;
+    if (ok) totalSuccDeals++;
+
+    // помесячно
+    const m = monthAgg.get(ym)||{leads:0,succ:0,rev:0};
+    m.leads++; if(ok) m.succ++;
+    monthAgg.set(ym, m);
+
+    // Канальный агрегат
+    const a = chanAgg.get(chan) || {leads:0, succ:0, rev:0, phones:new Set()};
+    a.leads++;
+    if (ok){
+      a.succ++;
+      const rev = revenueFromRow_(r[i.sumAX], r[i.budget]);
+      a.rev += rev; totalRevenue += rev;
+      // первый успешный визит телефона — для уникальных клиентов
+      if (phone){
+        const cur = firstSuccessOfPhone.get(phone);
+        const ts  = toTs_(created);
+        if (!cur || ts < cur.ts) firstSuccessOfPhone.set(phone, {ts, chan});
+      }
+    }
+    chanAgg.set(chan, a);
+  });
+
+  // 6) Уникальные клиенты по каналу (по 1-й успешной сделке телефонов)
+  const clientsByChannel = new Map(); // chan -> Set(phones)
+  firstSuccessOfPhone.forEach(({chan}, phone)=>{
+    const set = clientsByChannel.get(chan)||new Set();
+    set.add(phone); clientsByChannel.set(chan, set);
+  });
+
+  // 7) Сбор таблицы по каналам (+CAC, ROMI, LTV, конверсия)
+  const channels = [...chanAgg.entries()].map(([name,a])=>{
+    const spend = costByChannel.get(name)||0;
+    const clientsSet = clientsByChannel.get(name)||new Set();
+    const clients = clientsSet.size;
+    const conv = a.leads ? a.succ / a.leads : 0;
+    const avgCheck = a.succ ? a.rev / a.succ : 0;
+    const cac = clients ? spend / clients : 0;
+    const romi = spend ? (a.rev - spend) / spend : 0;
+
+    // LTV: средний Guests total по этим клиентам (если есть)
+    let ltvSum = 0, ltvCnt = 0;
+    clientsSet.forEach(p=>{
+      if (ltvByPhone.has(p)){ ltvSum += ltvByPhone.get(p); ltvCnt++; }
+    });
+    const ltv = ltvCnt ? (ltvSum / ltvCnt) : 0;
+
+    return {name, leads:a.leads, succ:a.succ, clients, revenue:a.rev, spend, cac, romi, conv, avgCheck, ltv};
+  });
+
+  // сортировка по доходу
+  channels.sort((x,y)=>y.revenue - x.revenue);
+
+  // 8) Глобальные KPI
+  const totalSpend = [...costByChannel.values()].reduce((s,x)=>s+x,0);
+  const totalClients = [...clientsByChannel.values()].reduce((s,set)=>s+set.size,0);
+  const totalConv = totalLeads ? totalSuccDeals/totalLeads : 0;
+  const totalCAC  = totalClients ? totalSpend/totalClients : 0;
+  const totalROMI = totalSpend ? (totalRevenue-totalSpend)/totalSpend : 0;
+  const avgCheck  = totalSuccDeals ? totalRevenue/totalSuccDeals : 0;
+
+  // 9) Рендер
+  const dash = ss.getSheetByName(E2E.SHEETS.DASH) || ss.insertSheet(E2E.SHEETS.DASH);
+  dash.clear();
+  dash.getRange(1,1,dash.getMaxRows(),dash.getMaxColumns()).setFontFamily(E2E.FONT);
+
+  let r = 1, c = 1;
+
+  band_(dash, r, c, 1, 16, '#133B5C');
+  dash.getRange(r,c,1,16).merge().setValue('🎯 СКВОЗНАЯ АНАЛИТИКА')
+    .setFontColor('#fff').setFontSize(18).setFontWeight('bold').setVerticalAlignment('middle');
+  r+=1;
+  dash.getRange(r,c).setValue('Последнее обновление:').setFontWeight('bold');
+  dash.getRange(r,c+1).setValue(new Date()).setNumberFormat('dd.MM.yyyy, HH:mm:ss'); r+=2;
+
+  // KPI
+  section_(dash, r, c, '✅ КЛЮЧЕВЫЕ ПОКАЗАТЕЛИ', 10, '#D7ECD9'); r++;
+  const kRows = [
+    ['Лиды', totalLeads, 'Всего сделок'],
+    ['Успешные сделки', totalSuccDeals, 'Оплачено / Успешно в РП / Успешно реализовано'],
+    ['Клиенты (уник.)', totalClients, 'По первой успешной сделке телефона'],
+    ['Доход ₽', totalRevenue, 'AX, если 0 → Бюджет (только успешные)'],
+    ['Расход ₽', totalSpend, 'Сумма «Расходы маркетинга»'],
+    ['Средний чек ₽', avgCheck, 'Доход / Успешные сделки'],
+    ['CAC ₽', totalCAC, 'Расход / Клиенты (уник.)'],
+    ['ROMI %', totalROMI, '(Доход-Расход)/Расход'],
+    ['Конверсия', totalConv, 'Успешные / Лиды']
+  ];
+  writeTable_(dash, r, c, ['Метрика','Значение','Описание'], kRows);
+  fmtMoney_(dash, r+3, c+1, 1);   // Доход
+  fmtMoney_(dash, r+4, c+1, 1);   // Расход
+  fmtMoney_(dash, r+5, c+1, 1);   // Ср. чек
+  fmtMoney_(dash, r+6, c+1, 1);   // CAC
+  dash.getRange(r+7, c+1).setNumberFormat('0.00%'); // ROMI
+  dash.getRange(r+8, c+1).setNumberFormat('0.00%'); // Конверсия
+  r += kRows.length + 3;
+
+  // Таблица каналов
+  section_(dash, r, c, '📈 КАНАЛЫ (сквозная аналитика)', 12, '#FFE4CC'); r++;
+  const head = ['Канал','Лиды','Успешные','Клиенты','Доход ₽','Расход ₽','CAC ₽','ROMI %','Конверсия','Ср. чек ₽','LTV ₽'];
+  const body = channels.map(x=>[
+    x.name, x.leads, x.succ, x.clients, x.revenue, x.spend, x.cac, x.romi, x.conv, x.avgCheck, x.ltv
+  ]);
+  writeTable_(dash, r, c, head, body);
+  if (body.length){
+    fmtMoney_(dash, r+1, c+4, body.length); // Доход
+    fmtMoney_(dash, r+1, c+5, body.length); // Расход
+    fmtMoney_(dash, r+1, c+6, body.length); // CAC
+    dash.getRange(r+1, c+7, body.length, 1).setNumberFormat('0.00%'); // ROMI
+    dash.getRange(r+1, c+8, body.length, 1).setNumberFormat('0.00%'); // Конверсия
+    fmtMoney_(dash, r+1, c+9, body.length); // Ср. чек
+    fmtMoney_(dash, r+1, c+10, body.length);// LTV
+  }
+  const chartStart = r; const chartRows = Math.max(2, body.length+1);
+  r += body.length + 3;
+
+  // Помесячная разбивка
+  section_(dash, r, c, '🗓️ ПО МЕСЯЦАМ', 10, '#E9F2FF'); r++;
+  const monthsSorted = [...monthAgg.entries()]
+    .map(([key,v])=>({key, label:ymLabel_(key), ...v}))
+    .sort((a,b)=>a.key.localeCompare(b.key));
+  const mHead = ['Месяц','Лиды','Успешные','Доход ₽','Расход ₽','ROMI %'];
+  const mBody = monthsSorted.map(m=>{
+    const cost = costByMonth.get(m.key)||0;
+    const romi = cost ? (m.rev - cost)/cost : 0;
+    return [m.label, m.leads, m.succ, m.rev||0, cost, romi];
+  });
+  writeTable_(dash, r, c, mHead, mBody);
+  if (mBody.length){
+    fmtMoney_(dash, r+1, c+3, mBody.length); // Доход
+    fmtMoney_(dash, r+1, c+4, mBody.length); // Расход
+    dash.getRange(r+1, c+5, mBody.length, 1).setNumberFormat('0.00%');
+  }
+  r += mBody.length + 2;
+
+  // График дохода по каналам
+  try {
+    dash.getCharts().forEach(ch=>dash.removeChart(ch));
+    const chart = dash.newChart()
+      .setChartType(Charts.ChartType.COLUMN)
+      .addRange(dash.getRange(chartStart, c, chartRows, 2)) // Канал | Доход
+      .setOption('title','Доход по каналам')
+      .setOption('legend.position','none')
+      .setOption('useFirstColumnAsDomain', true)
+      .setOption('hAxis',{slantedText:true, slantedTextAngle:20})
+      .setPosition(chartStart, 10, 0, 0)
+      .build();
+    dash.insertChart(chart);
+  } catch(e){}
+}
+
+// Часовой триггер
+function setHourlyTrigger_E2E(){
+  ScriptApp.getProjectTriggers()
+    .filter(t=>t.getHandlerFunction()==='buildE2E')
+    .forEach(t=>ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('buildE2E').timeBased().everyHours(1).create();
+}
+
+/********************* ХЕЛПЕРЫ **************************/
+function readSheet_(ss, name){
+  const sh = ss.getSheetByName(name);
+  if (!sh) return {header:[], rows:[]};
+  const v = sh.getDataRange().getValues();
+  const header = (v[0]||[]).map(String);
+  const rows = v.slice(1).filter(r=>r.some(x=>String(x).trim()!==''));
+  return {header, rows};
+}
+function findCol_(header, cand){
+  const norm = header.map(h=>String(h||'').trim().toLowerCase());
+  for (const n of cand){
+    const k = String(n).trim().toLowerCase();
+    let i = norm.indexOf(k);
+    if (i>-1) return i;
+    i = norm.findIndex(h=>h===k || h.includes(k));
+    if (i>-1) return i;
+  }
+  return -1;
+}
+function findRightmost_(header, cand){
+  const norm = header.map(h=>String(h||'').trim().toLowerCase());
+  let best = -1;
+  for (const n of cand){
+    const k = String(n).trim().toLowerCase();
+    norm.forEach((h,i)=>{ if (h===k || h.includes(k)) best = Math.max(best,i); });
+  }
+  return best;
+}
+function normalizeStatus_(raw){
+  let s = String(raw||'').trim();
+  s = s.replace(/^\s*все\s*бары\s*сети\s*(?:[\/\\|:\-–—]\s*)?/i,'').replace(/\s*(?:-|–|—)\s*.*$/,'').trim();
+  const rules = [
+    [/оплач/i,'Оплачено'],
+    [/успеш.*в\s*рп/i,'Успешно в РП'],
+    [/успеш.*реализ/i,'Успешно реализовано']
+  ];
+  for (const [re,n] of rules){ if (re.test(s)) return n; }
+  return s||'';
+}
+function revenueFromRow_(ax, budget){
+  const A = toNum_(ax);
+  if (A>0) return A;
+  return toNum_(budget);
+}
+function toNum_(v){ const n = Number(String(v||'').replace(/\s+/g,'').replace(',','.')); return isNaN(n)?0:n; }
+function toTs_(v){ const d = (v instanceof Date)? v : new Date(v); return d.getTime()||0; }
+function cleanPhone_(s){
+  const d = String(s||'').replace(/\D/g,'');
+  if (!d) return '';
+  if (d.length===11 && /^[78]/.test(d)) return d.slice(1);
+  if (d.length>=10) return d.slice(-10);
+  return d;
+}
+function pickChannel_(r, idx){
+  const tel = String(idx.telTag>-1 ? (r[idx.telTag]||'') : '').trim();
+  if (tel) return normalizeChannelName_(tel);
+  const utm = String(idx.utm>-1 ? (r[idx.utm]||'') : '').trim();
+  if (utm) return normalizeChannelName_(utm);
+  // прямой сайт (отправлял форму, но utm пустой)
+  const hasForm = [idx.lastForm,idx.formId,idx.formNm,idx.ref,idx.date]
+    .some(i=>i>-1 && String(r[i]||'').trim()!=='');
+  return hasForm ? 'direct_site' : '(без канала)';
+}
+function normalizeChannelName_(s){
+  const a = String(s||'').trim().toLowerCase();
+  if (a==='ya_map#booking') return 'ya_map';
+  return a;
+}
+function ymKey_(d){
+  const dt = (d instanceof Date)? d : new Date(d);
+  const y = dt.getFullYear(), m = dt.getMonth()+1;
+  return {key:`${y}-${('0'+m).slice(-2)}`};
+}
+function ymLabel_(key){
+  const [y,m] = key.split('-').map(Number);
+  const MMM=['ЯНВ','ФЕВ','МАР','АПР','МАЙ','ИЮН','ИЮЛ','АВГ','СЕН','ОКТ','НОЯ','ДЕК'][m-1];
+  return `${MMM} ’${String(y).slice(-2)}`;
+}
+function incMap_(map, k, by){ map.set(k, (map.get(k)||0) + (by||0)); }
+
+// оформление
+function band_(sh, r,c, rows, cols, bg){ sh.getRange(r,c,rows,cols).setBackground(bg); }
+function section_(sh, r,c, title, w, bg){
+  const rg = sh.getRange(r,c,1,Math.max(1,w)); try{rg.merge();}catch(e){}
+  rg.setValue(title).setBackground(bg).setFontWeight('bold').setFontSize(14)
+    .setBorder(null,null,true,null,false,false,'#9BBBD4',SpreadsheetApp.BorderStyle.SOLID);
+}
+function writeTable_(sh, r,c, head, body){
+  const w = head.length, h = Math.max(1, body.length+1);
+  sh.getRange(r,c,1,w).setValues([head]).setFontWeight('bold').setBackground('#F3F6FA')
+    .setBorder(true,true,true,true,true,true);
+  if (body.length){
+    const rng = sh.getRange(r+1,c,body.length,w);
+    rng.setValues(body);
+    // зебра
+    const bgs=[]; for(let i=0;i<body.length;i++) bgs.push(new Array(w).fill(i%2? '#FFFFFF':'#FAFDFF'));
+    rng.setBackgrounds(bgs).setBorder(true,true,true,true,true,true);
+  } else {
+    sh.getRange(r+1,c,1,w).setBorder(true,true,true,true,true,true);
+  }
+}
+function fmtMoney_(sh, r,c, n){
+  sh.getRange(r,c, n||1, 1).setNumberFormat('# ##0');
+}
+
+/********************* МЕНЮ **************************/
+function onOpen(){ 
+  SpreadsheetApp.getUi()
+    .createMenu('E2E Аналитика')
+    .addItem('Построить дашборд', 'buildE2E')
+    .addItem('Hourly-триггер', 'setHourlyTrigger_E2E')
+    .addToUi();
+}
