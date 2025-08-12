@@ -381,6 +381,22 @@ function setupTriggers_() {
 }
 
 /**
+ * Очищает данные на листе
+ * @param {Sheet} sheet - Лист для очистки
+ * @private
+ */
+function clearSheetData_(sheet) {
+  if (!sheet) return;
+  try {
+    if (sheet.getLastRow() > 0) {
+      sheet.clear();
+    }
+  } catch (error) {
+    logError_('CLEAR_SHEET', `Ошибка очистки листа "${sheet.getName()}"`, error);
+  }
+}
+
+/**
  * Создаёт главную страницу дашборда
  * @private
  */
