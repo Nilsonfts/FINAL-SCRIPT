@@ -397,6 +397,77 @@ function clearSheetData_(sheet) {
 }
 
 /**
+ * Применяет стиль заголовка к диапазону
+ * @param {Range} range - Диапазон для применения стиля
+ * @private
+ */
+function applyHeaderStyle_(range) {
+  if (!range) return;
+  try {
+    range.setBackground(CONFIG.COLORS.HEADER_BG || '#4285f4')
+         .setFontColor(CONFIG.COLORS.HEADER_TEXT || '#ffffff')
+         .setFontWeight('bold')
+         .setFontSize(14)
+         .setHorizontalAlignment('center')
+         .setVerticalAlignment('middle');
+  } catch (error) {
+    logError_('STYLE_HEADER', 'Ошибка применения стиля заголовка', error);
+  }
+}
+
+/**
+ * Применяет стиль подзаголовка к диапазону
+ * @param {Range} range - Диапазон для применения стиля
+ * @private
+ */
+function applySubheaderStyle_(range) {
+  if (!range) return;
+  try {
+    range.setBackground(CONFIG.COLORS.SUBHEADER_BG || '#f1f3f4')
+         .setFontColor(CONFIG.COLORS.SUBHEADER_TEXT || '#202124')
+         .setFontWeight('bold')
+         .setFontSize(12)
+         .setHorizontalAlignment('center')
+         .setVerticalAlignment('middle');
+  } catch (error) {
+    logError_('STYLE_SUBHEADER', 'Ошибка применения стиля подзаголовка', error);
+  }
+}
+
+/**
+ * Применяет стиль данных к диапазону
+ * @param {Range} range - Диапазон для применения стиля
+ * @private
+ */
+function applyDataStyle_(range) {
+  if (!range) return;
+  try {
+    range.setBackground('#ffffff')
+         .setFontColor('#202124')
+         .setFontSize(11)
+         .setVerticalAlignment('middle')
+         .setBorder(true, true, true, true, true, true, '#e0e0e0', SpreadsheetApp.BorderStyle.SOLID);
+  } catch (error) {
+    logError_('STYLE_DATA', 'Ошибка применения стиля данных', error);
+  }
+}
+
+/**
+ * Получает лист по имени
+ * @param {string} sheetName - Имя листа
+ * @return {Sheet|null} Лист или null если не найден
+ * @private
+ */
+function getSheet_(sheetName) {
+  try {
+    return SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  } catch (error) {
+    logError_('GET_SHEET', `Ошибка получения листа "${sheetName}"`, error);
+    return null;
+  }
+}
+
+/**
  * Создаёт главную страницу дашборда
  * @private
  */
@@ -963,61 +1034,4 @@ function humanizeHeader(header) {
   };
   
   return humanMap[header] || header.replace(/^(Сделка|Контакт)\./, '');
-}
-
-/**
- * Обновление времени в рабочем листе
- */
-function updateTimeOnlyOnWorking() {
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const workingSheet = ss.getSheetByName(CONFIG.mainScript.SHEETS.OUT);
-    
-    if (!workingSheet) return;
-    
-    // Добавляем колонку TIME если её нет
-    const timeHeader = 'TIME';
-    const headers = workingSheet.getRange(1, 1, 1, workingSheet.getLastColumn()).getValues()[0];
-    const timeIdx = headers.indexOf(timeHeader);
-    
-    if (timeIdx === -1) {
-      // Добавляем колонку TIME
-      const newCol = workingSheet.getLastColumn() + 1;
-      workingSheet.getRange(1, newCol).setValue(timeHeader);
-      
-      // Заполняем текущим временем все строки
-      if (workingSheet.getLastRow() > 1) {
-        const currentTime = getCurrentDateMoscow_();
-        const timeValues = Array(workingSheet.getLastRow() - 1).fill([currentTime]);
-        workingSheet.getRange(2, newCol, timeValues.length, 1).setValues(timeValues);
-      }
-    } else {
-      // Обновляем существующую колонку
-      if (workingSheet.getLastRow() > 1) {
-        const currentTime = getCurrentDateMoscow_();
-        const timeValues = Array(workingSheet.getLastRow() - 1).fill([currentTime]);
-        workingSheet.getRange(2, timeIdx + 1, timeValues.length, 1).setValues(timeValues);
-      }
-    }
-  } catch (error) {
-    logError_('TIME_UPDATE', 'Ошибка обновления времени', error);
-  }
-}
-
-/**
- * Обновление источников из колл-трекинга
- */
-function updateCalltrackingOnWorking() {
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const workingSheet = ss.getSheetByName(CONFIG.mainScript.SHEETS.OUT);
-    const callSheet = ss.getSheetByName(CONFIG.mainScript.SHEETS.CALL);
-    
-    if (!workingSheet || !callSheet) return;
-    
-    // Логика обновления колл-трекинга
-    logInfo_('CT_UPDATE', 'Обновление колл-трекинга выполнено');
-  } catch (error) {
-    logError_('CT_UPDATE', 'Ошибка обновления колл-трекинга', error);
-  }
 }
