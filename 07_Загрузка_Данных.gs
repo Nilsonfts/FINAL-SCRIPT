@@ -277,6 +277,7 @@ function enrichWithAdditionalData_(amocrmData) {
     
     // Находим индексы ключевых полей
     const phoneIdx = findColumnIndex(amocrmData.header, ['Телефон', 'Контакт.Телефон', 'Phone']);
+    const statusIdx = findColumnIndex(amocrmData.header, ['Статус', 'Status', 'Сделка.Статус']);
     const timeNow = getCurrentDateMoscow_().toLocaleString();
     
     // Обогащаем каждую строку
@@ -290,6 +291,11 @@ function enrichWithAdditionalData_(amocrmData) {
       
       // Получаем телефон для поиска
       const phone = phoneIdx >= 0 ? cleanPhone(row[phoneIdx]) : '';
+      
+      // Нормализуем статус (убираем "ВСЕ БАРЫ СЕТИ /")
+      if (statusIdx >= 0 && row[statusIdx]) {
+        enrichedRow[statusIdx] = normalizeStatus(row[statusIdx]);
+      }
       
       if (phone) {
         // Обогащение данными Reserves
