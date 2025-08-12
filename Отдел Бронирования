@@ -1,0 +1,350 @@
+/** ================== TEAM PERFORMANCE DASHBOARD (v5, AX revenue + top10 + hourly) ================== **/
+const TP_CFG = {
+  RA_SHEET: 'РАБОЧИЙ АМО',
+  REPORT_SHEET: '⚡ ЭФФЕКТИВНОСТЬ КОМАНДЫ И АНАЛИТИКА',
+  FONT: 'PT Sans',
+
+  // «успешные» только эти три
+  OK_STATUSES: ['Оплачено', 'Успешно в РП', 'Успешно реализовано'],
+
+  // необязательный фильтр периода по "Дата создания": 'YYYY-MM-DD' или null
+  PERIOD_FROM: null,
+  PERIOD_TO:   null,
+
+  MAKE_CHARTS: true,
+
+  // подсветка топ-N менеджеров по выручке
+  TOP_N: 10,
+  TOP_BG: '#FFF7D6'
+};
+
+function buildTeamPerformanceDashboard() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ra = tp_readRA_(ss);
+
+  const byMgr  = new Map(); // manager -> {leads, ok, revenue}
+  const byType = new Map(); // type -> {leads, ok, revenue}
+
+  const iMgr    = ra.idx.manager;
+  const iStatus = ra.idx.status;
+  const iBudget = ra.idx.budget;
+  const iType   = ra.idx.type;
+  const iDate   = ra.idx.created;
+  const iAX     = ra.idx.ax; // AX «Сумма ₽» (правый дубль)
+
+  const fromTs = tp_toTs_(TP_CFG.PERIOD_FROM);
+  const toTs   = tp_toTs_(TP_CFG.PERIOD_TO, true);
+
+  ra.rows.forEach(r => {
+    // период по дате создания
+    if (iDate > -1 && (fromTs || toTs)) {
+      const t = tp_toTs_(r[iDate]);
+      if (fromTs && (!t || t < fromTs)) return;
+      if (toTs   && (!t || t > toTs))   return;
+    }
+
+    const mgr = String(iMgr > -1 ? (r[iMgr] || '') : '').trim() || '(без ответственного)';
+
+    const rawStatus  = String(iStatus > -1 ? (r[iStatus] || '') : '').trim();
+    const normStatus = tp_normalizeStatus_(rawStatus);
+    const ok = TP_CFG.OK_STATUSES.includes(normStatus);
+
+    // === ВЫРУЧКА: AX -> (если ok и AX=0) Бюджет -> 0
+    const ax     = tp_toNumber_(iAX > -1 ? r[iAX] : 0);
+    const budget = tp_toNumber_(iBudget > -1 ? r[iBudget] : 0);
+    const revenue = ax > 0 ? ax : (ok ? budget : 0);
+
+    // менеджер
+    const m = byMgr.get(mgr) || { leads:0, ok:0, revenue:0 };
+    m.leads += 1;
+    if (ok) m.ok += 1;
+    if (revenue > 0) m.revenue += revenue;
+    byMgr.set(mgr, m);
+
+    // тип лида
+    const tLead = String(iType > -1 ? (r[iType] || '') : '').trim() || '(не указан)';
+    const t = byType.get(tLead) || { leads:0, ok:0, revenue:0 };
+    t.leads += 1;
+    if (ok) t.ok += 1;
+    if (revenue > 0) t.revenue += revenue;
+    byType.set(tLead, t);
+  });
+
+  // ---- таблицы
+  const mgrTable = [];
+  byMgr.forEach((v,k) => {
+    const conv = v.leads ? v.ok / v.leads : 0;
+    const avg  = v.ok ? v.revenue / v.ok : 0;
+    mgrTable.push([k, v.leads, v.ok, v.revenue, conv, avg]);
+  });
+  mgrTable.sort((a,b)=> (b[3]-a[3]) || (b[1]-a[1]) || a[0].localeCompare(b[0]));
+
+  const typeTable = [];
+  byType.forEach((v,k) => {
+    const conv = v.leads ? v.ok / v.leads : 0;
+    const avg  = v.ok ? v.revenue / v.ok : 0;
+    typeTable.push([k, v.leads, v.ok, v.revenue, conv, avg]);
+  });
+  typeTable.sort((a,b)=> (b[3]-a[3]) || (b[1]-a[1]));
+
+  // ---- рендер
+  const sh = ss.getSheetByName(TP_CFG.REPORT_SHEET) || ss.insertSheet(TP_CFG.REPORT_SHEET);
+  sh.clear();
+
+  sh.getRange(1,1,1,6).merge()
+    .setValue('⚡ ЭФФЕКТИВНОСТЬ КОМАНДЫ И АНАЛИТИКА')
+    .setFontFamily(TP_CFG.FONT).setFontSize(16).setFontWeight('bold')
+    .setHorizontalAlignment('left').setBackground('#E53E3E').setFontColor('#ffffff');
+
+  const now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd.MM.yyyy, HH:mm:ss');
+  const sub = TP_CFG.PERIOD_FROM || TP_CFG.PERIOD_TO ? `Период: ${TP_CFG.PERIOD_FROM||'…'} — ${TP_CFG.PERIOD_TO||'…'} | ` : '';
+  sh.getRange(2,1,1,6).merge()
+    .setValue(`${sub}Последнее обновление: ${now}`)
+    .setFontFamily(TP_CFG.FONT).setFontSize(10).setFontColor('#666');
+
+  tp_setSectionTitle_(sh, 3, 1, 'ЭФФЕКТИВНОСТЬ МЕНЕДЖЕРОВ', 6);
+
+  const headMgr = ['Менеджер','Лиды','Успешные','Доход','Конверсия','Ср. чек'];
+  tp_upsertTable_(sh, 4, 1, headMgr, mgrTable);
+  const mgrRows = (mgrTable.length ? mgrTable.length+1 : 1);
+  tp_styleTable_(sh, 4, 1, mgrRows, headMgr.length);
+
+  if (mgrTable.length) {
+    sh.getRange(5, 4, mgrTable.length, 1).setNumberFormat('[>=0]#,##0" ₽";-#,##0" ₽";"-"');
+    sh.getRange(5, 5, mgrTable.length, 1).setNumberFormat('0.00%');
+    sh.getRange(5, 6, mgrTable.length, 1).setNumberFormat('[>=0]#,##0" ₽";-#,##0" ₽";"-"');
+  }
+
+  // подсветка ТОП-10
+  if (mgrTable.length) {
+    const topN = Math.min(TP_CFG.TOP_N, mgrTable.length);
+    sh.getRange(5, 1, topN, headMgr.length)
+      .setBackground(TP_CFG.TOP_BG)
+      .setFontWeight('bold');
+  }
+
+  let r = 4 + mgrRows + 2;
+
+  tp_setSectionTitle_(sh, r, 1, 'АНАЛИЗ ПО ТИПАМ ЛИДОВ', 6);
+  const headType = ['Тип лида','Лиды','Успешные','Доход','Конверсия','Ср. чек'];
+  tp_upsertTable_(sh, r+1, 1, headType, typeTable);
+  const typeRows = (typeTable.length ? typeTable.length+1 : 1);
+  tp_styleTable_(sh, r+1, 1, typeRows, headType.length);
+
+  if (typeTable.length) {
+    sh.getRange(r+2, 4, typeTable.length, 1).setNumberFormat('[>=0]#,##0" ₽";-#,##0" ₽";"-"');
+    sh.getRange(r+2, 5, typeTable.length, 1).setNumberFormat('0.00%');
+    sh.getRange(r+2, 6, typeTable.length, 1).setNumberFormat('[>=0]#,##0" ₽";-#,##0" ₽";"-"');
+  }
+
+  sh.setColumnWidths(1, 6, 120);
+  sh.setColumnWidth(1, 180);
+  sh.setRowHeights(1, 1, 34);
+  sh.setFrozenRows(4);
+
+  // графики (топ-15)
+  if (TP_CFG.MAKE_CHARTS) {
+    try {
+      sh.getCharts().forEach(c => sh.removeChart(c));
+
+      const START_COL = 20;
+      if (sh.getMaxColumns() < START_COL+5) sh.insertColumnsAfter(sh.getMaxColumns(), START_COL+5 - sh.getMaxColumns());
+
+      const top15 = mgrTable.slice(0, 15);
+      const helper1 = [['Менеджер','Доход']].concat(top15.map(r => [r[0], r[3]]));
+      const helper2 = [['Менеджер','Конверсия']].concat(top15.map(r => [r[0], r[4]]));
+
+      sh.getRange(1, START_COL, helper1.length, 2).setValues(helper1).setFontFamily(TP_CFG.FONT);
+      sh.getRange(1, START_COL+3, helper2.length, 2).setValues(helper2).setFontFamily(TP_CFG.FONT);
+      try { sh.hideColumns(START_COL, 5); } catch(e) {}
+      SpreadsheetApp.flush();
+
+      const colChart = sh.newChart()
+        .setChartType(Charts.ChartType.COLUMN)
+        .addRange(sh.getRange(1, START_COL, helper1.length, 2))
+        .setOption('title','Доход по менеджерам (топ-15)')
+        .setOption('legend.position','none')
+        .setOption('useFirstColumnAsDomain', true)
+        .setOption('bar.groupWidth','60%')
+        .setOption('titleTextStyle',{fontSize:14,bold:true})
+        .setOption('hAxis',{ slantedText:true, slantedTextAngle:30, textStyle:{fontSize:11}})
+        .setOption('vAxis',{ title:'₽', textStyle:{fontSize:11}})
+        .setOption('chartArea',{left:40, top:40, width:'70%', height:'45%'})
+        .setPosition(4, 8, 0, 0)
+        .build();
+      sh.insertChart(colChart);
+
+      const lineChart = sh.newChart()
+        .setChartType(Charts.ChartType.LINE)
+        .addRange(sh.getRange(1, START_COL+3, helper2.length, 2))
+        .setOption('title','Конверсия по менеджерам (топ-15)')
+        .setOption('legend.position','none')
+        .setOption('useFirstColumnAsDomain', true)
+        .setOption('curveType','function')
+        .setOption('pointSize',5)
+        .setOption('lineWidth',3)
+        .setOption('vAxis',{ format:'percent', textStyle:{fontSize:11}})
+        .setOption('chartArea',{left:40, top:40, width:'70%', height:'45%'})
+        .setPosition(23, 8, 0, 0)
+        .build();
+      sh.insertChart(lineChart);
+    } catch(e) {}
+  }
+}
+
+/** ================== helpers ================== **/
+
+function tp_readRA_(ss){
+  const sh = ss.getSheetByName(TP_CFG.RA_SHEET);
+  if (!sh) throw new Error('Нет листа "'+TP_CFG.RA_SHEET+'"');
+
+  // заголовок (в РА шапка на 2-й строке)
+  const peek = sh.getRange(1,1,Math.min(5, sh.getLastRow()||5), Math.min(200, sh.getLastColumn()||40)).getValues();
+  let headerRow = 1;
+  for (let r=0; r<peek.length; r++) {
+    const row = peek[r].map(String);
+    if (row.includes('ID') && row.some(x => x==='Статус' || x==='Дата создания')) { headerRow = r+1; break; }
+  }
+
+  const lastRow = sh.getLastRow(), lastCol = sh.getLastColumn();
+  if (lastRow < headerRow+1) return { header:[], rows:[], idx:{} };
+
+  const header = sh.getRange(headerRow, 1, 1, lastCol).getValues()[0].map(String);
+  const rows   = sh.getRange(headerRow+1, 1, lastRow-headerRow, lastCol).getValues();
+
+  const iMgr    = tp_findHeaderIndex_(header, ['Ответственный','Сделка.Ответственный']);
+  const iStatus = tp_findHeaderIndex_(header, ['Статус','Сделка.Статус']);
+  const iBudget = tp_findHeaderIndex_(header, ['Бюджет','Сделка.Бюджет']);
+  const iType   = tp_findHeaderIndex_(header, ['Тип лида','Сделка.Тип лида']);
+  const iDate   = tp_findHeaderIndex_(header, ['Дата создания','DATE','Сделка.DATE']);
+  const iAX     = tp_findAxIndex_(header); // правый «Сумма ₽»
+
+  return { header, rows, idx:{ manager:iMgr, status:iStatus, budget:iBudget, type:iType, created:iDate, ax:iAX } };
+}
+
+function tp_findHeaderIndex_(header, names){
+  const norm = header.map(h => String(h||'').trim().toLowerCase());
+  for (const name of names){
+    const n = String(name).trim().toLowerCase();
+    let i = norm.indexOf(n); if (i>-1) return i;
+    i = norm.findIndex(h => h===n || h.includes(n)); if (i>-1) return i;
+  }
+  return -1;
+}
+
+// Ищем именно AX: берём ПРАВЫЙ «Сумма ₽» (последнее в шапке вхождение слова «сумм»)
+function tp_findAxIndex_(header){
+  const norm = header.map(h => String(h||'').trim().toLowerCase());
+  let idx = -1;
+  for (let i=0;i<norm.length;i++){
+    if (norm[i].includes('сумм')) idx = i; // запоминаем самое правое
+  }
+  return idx;
+}
+
+function tp_normalizeStatus_(raw){
+  let s = String(raw||'').trim();
+  s = s.replace(/^\s*все\s*бары\s*сети\s*(?:[\/\\|:\-–—]\s*)?/i,'');
+  s = s.replace(/^\s*все\s*бары\s*сети\s*$/i,'');
+  s = s.replace(/\s*(?:-|–|—)\s*.*$/, '').trim();
+  const rules = [
+    [/успеш.*в\s*рп/i, 'Успешно в РП'],
+    [/успеш.*реализ/i, 'Успешно реализовано'],
+    [/оплач/i,         'Оплачено'],
+  ];
+  for (const [re, norm] of rules){ if (re.test(s)) return norm; }
+  return s;
+}
+
+function tp_toNumber_(v){
+  if (v===null || v===undefined || v==='') return 0;
+  const s = String(v).replace(/\s/g,'').replace(',','.');
+  const n = Number(s);
+  return isFinite(n) ? n : 0;
+}
+function tp_toTs_(v, endOfDay){
+  if (!v) return 0;
+  if (Object.prototype.toString.call(v) === '[object Date]' && !isNaN(v)) {
+    return endOfDay ? new Date(v.getFullYear(), v.getMonth(), v.getDate(), 23,59,59,999).getTime() : v.getTime();
+  }
+  const s = String(v).trim(); if (!s) return 0;
+  const m1 = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m1) return new Date(Number(m1[1]), Number(m1[2])-1, Number(m1[3]), endOfDay?23:0, endOfDay?59:0, endOfDay?59:0, endOfDay?999:0).getTime();
+  const t = Date.parse(s);
+  return isNaN(t) ? 0 : (endOfDay ? new Date(new Date(t).setHours(23,59,59,999)).getTime() : t);
+}
+
+function tp_setSectionTitle_(sh, row, col, text, width){
+  const w = Math.max(1, width || 6);
+  if (sh.getMaxColumns() < col + w - 1) {
+    sh.insertColumnsAfter(sh.getMaxColumns(), (col + w - 1) - sh.getMaxColumns());
+  }
+  const rng = sh.getRange(row, col, 1, w);
+  try { rng.merge(); } catch(e) {}
+  rng.setValue(String(text || ''))
+     .setFontFamily(TP_CFG.FONT)
+     .setFontWeight('bold')
+     .setFontSize(13)
+     .setHorizontalAlignment('left')
+     .setBackground('#E6F7FF');
+  try { rng.setBorder(null,null,true,null,false,false,'#4A90E2',SpreadsheetApp.BorderStyle.SOLID); } catch(e) {}
+}
+
+function tp_upsertTable_(sh, row, col, header, data){
+  const needRows = row + Math.max(1, data.length) + 1;
+  const needCols = col + header.length - 1;
+  if (sh.getMaxRows() < needRows) sh.insertRowsAfter(sh.getMaxRows(), needRows - sh.getMaxRows());
+  if (sh.getMaxColumns() < needCols) sh.insertColumnsAfter(sh.getMaxColumns(), needCols - sh.getMaxColumns());
+
+  sh.getRange(row, col, 1, header.length)
+    .setValues([header]).setFontFamily(TP_CFG.FONT).setFontWeight('bold');
+  if (data.length)
+    sh.getRange(row+1, col, data.length, header.length)
+      .setValues(data).setFontFamily(TP_CFG.FONT);
+}
+
+function tp_styleTable_(sh, startRow, startCol, numRows, numCols){
+  if (numRows<=0 || numCols<=0) return;
+  const headerBg = '#E6F7FF', evenBg='#FFFFFF', oddBg='#F8FCFF';
+
+  const full = sh.getRange(startRow, startCol, numRows, numCols);
+  full.setFontFamily(TP_CFG.FONT).setFontSize(12).setFontWeight('normal');
+
+  const head = sh.getRange(startRow, startCol, 1, numCols);
+  head.setFontWeight('bold').setBackground(headerBg).setFontFamily(TP_CFG.FONT);
+  try { head.setBorder(null,null,true,null,false,false,'#4A90E2',SpreadsheetApp.BorderStyle.SOLID); } catch(e) {}
+
+  const dataRows = Math.max(0, numRows - 1);
+  if (dataRows>0){
+    const dataRng = sh.getRange(startRow+1, startCol, dataRows, numCols);
+    const bgs = [];
+    for (let r=0;r<dataRows;r++){
+      bgs.push(Array.from({length:numCols}, ()=> (r%2===0)?oddBg:evenBg));
+    }
+    dataRng.setBackgrounds(bgs);
+  }
+
+  try{
+    full.setBorder(true,true,true,true,true,true,'#9E9E9E',SpreadsheetApp.BorderStyle.DOTTED);
+    sh.getRange(startRow, startCol, 1, numCols).setBorder(true,true,true,true,false,false,'#666666',SpreadsheetApp.BorderStyle.SOLID);
+    sh.getRange(startRow+numRows-1, startCol, 1, numCols).setBorder(true,true,true,true,false,false,'#666666',SpreadsheetApp.BorderStyle.SOLID);
+    sh.getRange(startRow, startCol, numRows, 1).setBorder(true,true,true,true,false,false,'#666666',SpreadsheetApp.BorderStyle.SOLID);
+    sh.getRange(startRow, startCol+numCols-1, numRows, 1).setBorder(true,true,true,true,false,false,'#666666',SpreadsheetApp.BorderStyle.SOLID);
+  }catch(e){}
+}
+
+/** ================== ТРИГГЕРЫ ================== **/
+
+function rebuildAllHourly(){
+  if (typeof buildWorkingFromFive === 'function') { try { buildWorkingFromFive(); } catch(e) {} }
+  if (typeof buildCalltrackingReport === 'function') { try { buildCalltrackingReport(); } catch(e) {} }
+  buildTeamPerformanceDashboard();
+}
+
+function setHourlyTriggersAll(){
+  ScriptApp.getProjectTriggers().forEach(t=>{
+    if (t.getHandlerFunction()==='rebuildAllHourly') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('rebuildAllHourly').timeBased().everyHours(1).create();
+  SpreadsheetApp.getActive().toast('Почасовой триггер создан: rebuildAllHourly','OK',5);
+}
