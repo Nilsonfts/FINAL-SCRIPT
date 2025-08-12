@@ -104,6 +104,117 @@ function applySheetFormatting_(sheet, title) {
   }
 }
 
+/**
+ * Обновляет время последнего обновления в ячейке A1
+ * @param {string} sheetName - Название листа
+ */
+function updateLastUpdateTime_(sheetName) {
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+    if (!sheet) {
+      logWarning_('TIME_UPDATE', `Лист "${sheetName}" не найден для обновления времени`);
+      return;
+    }
+    
+    const now = getCurrentDateMoscow_();
+    const timeString = `Последнее обновление: ${formatDateTime_(now)}`;
+    
+    sheet.getRange('A1').setValue(timeString);
+    sheet.getRange('A1')
+      .setFontSize(9)
+      .setFontStyle('italic')
+      .setFontColor('#666666');
+    
+    logDebug_('TIME_UPDATE', `Время обновлено в листе "${sheetName}"`);
+    
+  } catch (error) {
+    logWarning_('TIME_UPDATE', `Ошибка обновления времени в листе "${sheetName}"`, error);
+  }
+}
+
+/**
+ * Универсальная функция создания диаграмм
+ * @param {SpreadsheetApp.Sheet} sheet - Лист для диаграммы
+ * @param {string} chartType - Тип диаграммы ('pie', 'column', 'line')
+ * @param {Array} data - Данные для диаграммы
+ * @param {Object} options - Параметры диаграммы
+ * @returns {SpreadsheetApp.EmbeddedChart|null} Созданная диаграмма или null
+ */
+function createChart_(sheet, chartType, data, options = {}) {
+  try {
+    if (!sheet || !data || data.length < 2) {
+      logWarning_('CHARTS', 'Недостаточно данных для создания диаграммы');
+      return null;
+    }
+    
+    const {
+      startRow = 1,
+      startCol = 8,
+      title = 'Диаграмма',
+      width = 500,
+      height = 350,
+      position = { row: 3, col: 8 },
+      legend = 'right',
+      hAxisTitle = '',
+      vAxisTitle = ''
+    } = options;
+    
+    // Записываем данные в лист
+    sheet.getRange(startRow, startCol, data.length, data[0].length).setValues(data);
+    const dataRange = sheet.getRange(startRow, startCol, data.length, data[0].length);
+    
+    // Создаём диаграмму в зависимости от типа
+    let chartBuilder;
+    
+    switch (chartType.toLowerCase()) {
+      case 'pie':
+        chartBuilder = Charts.newPieChart()
+          .addRange(dataRange)
+          .setOption('legend', { position: legend });
+        break;
+        
+      case 'column':
+        chartBuilder = Charts.newColumnChart()
+          .addRange(dataRange)
+          .setOption('legend', { position: legend })
+          .setOption('hAxis', { title: hAxisTitle })
+          .setOption('vAxis', { title: vAxisTitle });
+        break;
+        
+      case 'line':
+        chartBuilder = Charts.newLineChart()
+          .addRange(dataRange)
+          .setOption('legend', { position: legend })
+          .setOption('hAxis', { title: hAxisTitle })
+          .setOption('vAxis', { title: vAxisTitle })
+          .setOption('curveType', 'function');
+        break;
+        
+      default:
+        logWarning_('CHARTS', `Неизвестный тип диаграммы: ${chartType}`);
+        return null;
+    }
+    
+    // Применяем общие настройки
+    const chart = chartBuilder
+      .setOption('title', title)
+      .setOption('titleTextStyle', { fontSize: 14, bold: true })
+      .setOption('chartArea', { width: '80%', height: '80%' })
+      .setPosition(position.row, position.col, 0, 0)
+      .setOption('width', width)
+      .setOption('height', height)
+      .build();
+    
+    sheet.insertChart(chart);
+    logDebug_('CHARTS', `Диаграмма "${title}" создана в листе "${sheet.getName()}"`);
+    return chart;
+    
+  } catch (error) {
+    logWarning_('CHARTS', `Ошибка создания диаграммы "${options.title || 'Неизвестная'}"`, error);
+    return null;
+  }
+}
+
 // ===== ЛОГИРОВАНИЕ =====
 
 /**

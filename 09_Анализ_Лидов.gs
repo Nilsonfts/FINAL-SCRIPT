@@ -691,101 +691,84 @@ function createLeadsAnalysisStructure_(sheet, leadsData) {
  * @private
  */
 function addLeadsAnalysisCharts_(sheet, leadsData) {
-  // 1. Круговая диаграмма качества лидов
-  if (leadsData.channelLeads.length > 0) {
-    const qualityChartData = [['Канал', 'Квалифицированные лиды']].concat(
-      leadsData.channelLeads.slice(0, 8).map(item => [item.channel, item.qualifiedLeads])
-    );
-    
-    const qualityChart = sheet.insertChart(
-      Charts.newPieChart()
-        .setDataRange(sheet.getRange(1, 9, qualityChartData.length, 2))
-        .setOption('title', 'Распределение квалифицированных лидов по каналам')
-        .setOption('titleTextStyle', { fontSize: 14, bold: true })
-        .setOption('legend', { position: 'right' })
-        .setOption('chartArea', { width: '80%', height: '80%' })
-        .setPosition(3, 9, 0, 0)
-        .setOption('width', 500)
-        .setOption('height', 350)
-        .build()
-    );
-    
-    sheet.getRange(1, 9, qualityChartData.length, 2).setValues(qualityChartData);
-  }
-  
-  // 2. Столбчатая диаграмма полноты данных по каналам
-  if (leadsData.channelLeads.length > 0) {
-    const completenessChartData = [['Канал', 'Полнота данных %']].concat(
-      leadsData.channelLeads.slice(0, 10).map(item => [item.channel, item.completenessScore])
-    );
-    
-    const completenessChart = sheet.insertChart(
-      Charts.newColumnChart()
-        .setDataRange(sheet.getRange(1, 12, completenessChartData.length, 2))
-        .setOption('title', 'Полнота данных лидов по каналам')
-        .setOption('titleTextStyle', { fontSize: 14, bold: true })
-        .setOption('legend', { position: 'none' })
-        .setOption('hAxis', { title: 'Канал', slantedText: true })
-        .setOption('vAxis', { title: 'Полнота данных, %', minValue: 0, maxValue: 100 })
-        .setPosition(3, 15, 0, 0)
-        .setOption('width', 600)
-        .setOption('height', 350)
-        .build()
-    );
-    
-    sheet.getRange(1, 12, completenessChartData.length, 2).setValues(completenessChartData);
-  }
-  
-  // 3. Временное распределение лидов по часам
-  if (Object.keys(leadsData.timeAnalysis.hourly).length > 0) {
-    const hourlyData = [['Час', 'Количество лидов']];
-    
-    for (let hour = 0; hour < 24; hour++) {
-      const data = leadsData.timeAnalysis.hourly[hour];
-      hourlyData.push([`${hour}:00`, data ? data.total : 0]);
+  try {
+    // 1. Круговая диаграмма качества лидов
+    if (leadsData.channelLeads.length > 0) {
+      const qualityChartData = [['Канал', 'Квалифицированные лиды']].concat(
+        leadsData.channelLeads.slice(0, 8).map(item => [item.channel, item.qualifiedLeads])
+      );
+      
+      createChart_(sheet, 'pie', qualityChartData, {
+        startCol: 9,
+        title: 'Распределение квалифицированных лидов по каналам',
+        position: { row: 3, col: 9 },
+        legend: 'right'
+      });
     }
     
-    const hourlyChart = sheet.insertChart(
-      Charts.newLineChart()
-        .setDataRange(sheet.getRange(1, 15, hourlyData.length, 2))
-        .setOption('title', 'Распределение лидов по часам дня')
-        .setOption('titleTextStyle', { fontSize: 14, bold: true })
-        .setOption('legend', { position: 'none' })
-        .setOption('hAxis', { title: 'Час дня', slantedText: true })
-        .setOption('vAxis', { title: 'Количество лидов' })
-        .setOption('curveType', 'function')
-        .setPosition(25, 9, 0, 0)
-        .setOption('width', 700)
-        .setOption('height', 350)
-        .build()
-    );
+    // 2. Столбчатая диаграмма полноты данных по каналам
+    if (leadsData.channelLeads.length > 0) {
+      const completenessChartData = [['Канал', 'Полнота данных %']].concat(
+        leadsData.channelLeads.slice(0, 10).map(item => [item.channel, item.completenessScore])
+      );
+      
+      createChart_(sheet, 'column', completenessChartData, {
+        startCol: 12,
+        title: 'Полнота данных лидов по каналам',
+        position: { row: 3, col: 15 },
+        legend: 'none',
+        hAxisTitle: 'Канал',
+        vAxisTitle: 'Полнота данных, %',
+        width: 600
+      });
+    }
     
-    sheet.getRange(1, 15, hourlyData.length, 2).setValues(hourlyData);
-  }
-  
-  // 4. Воронка конверсии
-  if (Object.keys(leadsData.conversionFunnel.stages).length > 0) {
-    const funnelChartData = [['Стадия', 'Количество']].concat(
-      Object.entries(leadsData.conversionFunnel.stages)
-        .filter(([, count]) => count > 0)
-        .map(([stage, count]) => [stage, count])
-    );
+    // 3. Временное распределение лидов по часам
+    if (Object.keys(leadsData.timeAnalysis.hourly).length > 0) {
+      const hourlyData = [['Час', 'Количество лидов']];
+      
+      for (let hour = 0; hour < 24; hour++) {
+        const data = leadsData.timeAnalysis.hourly[hour];
+        hourlyData.push([`${hour}:00`, data ? data.total : 0]);
+      }
+      
+      createChart_(sheet, 'line', hourlyData, {
+        startCol: 15,
+        startRow: 1,
+        title: 'Распределение лидов по часам дня',
+        position: { row: 25, col: 9 },
+        legend: 'none',
+        hAxisTitle: 'Час дня',
+        vAxisTitle: 'Количество лидов',
+        width: 700
+      });
+    }
     
-    const funnelChart = sheet.insertChart(
-      Charts.newColumnChart()
-        .setDataRange(sheet.getRange(1, 18, funnelChartData.length, 2))
-        .setOption('title', 'Воронка конверсии лидов')
-        .setOption('titleTextStyle', { fontSize: 14, bold: true })
-        .setOption('legend', { position: 'none' })
-        .setOption('hAxis', { title: 'Стадия воронки', slantedText: true })
-        .setOption('vAxis', { title: 'Количество лидов' })
-        .setPosition(25, 18, 0, 0)
-        .setOption('width', 600)
-        .setOption('height', 350)
-        .build()
-    );
+    // 4. Воронка конверсии
+    if (Object.keys(leadsData.conversionFunnel.stages).length > 0) {
+      const funnelChartData = [['Стадия', 'Количество']].concat(
+        Object.entries(leadsData.conversionFunnel.stages)
+          .filter(([, count]) => count > 0)
+          .map(([stage, count]) => [stage, count])
+      );
+      
+      createChart_(sheet, 'column', funnelChartData, {
+        startCol: 18,
+        startRow: 1,
+        title: 'Воронка конверсии лидов',
+        position: { row: 25, col: 18 },
+        legend: 'none',
+        hAxisTitle: 'Стадия воронки',
+        vAxisTitle: 'Количество лидов',
+        width: 600
+      });
+    }
     
-    sheet.getRange(1, 18, funnelChartData.length, 2).setValues(funnelChartData);
+    logDebug_('CHARTS', 'Диаграммы анализа лидов добавлены');
+    
+  } catch (error) {
+    logWarning_('CHARTS', 'Ошибка создания диаграмм анализа лидов', error);
+    // Продолжаем работу даже если диаграммы не удалось создать
   }
 }
 
