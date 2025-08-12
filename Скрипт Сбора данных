@@ -1,0 +1,1081 @@
+/************ КОНФИГ ************/
+const CFG = {
+  SHEETS: {
+    NEW: 'Амо Выгрузка',
+    FULL: 'Выгрузка Амо Полная',
+    SITE: 'Заявки с Сайта',
+    RES:  'Reserves RP',
+    GUE:  'Guests RP',
+    CALL: 'КоллТрекинг',
+    OUT:  'РАБОЧИЙ АМО',
+    DIAG: '_DIAG',
+    NEW_ONLY: 'НОВЫЕ',
+    PROBLEM: 'ПРОБЛЕМНЫЕ',
+    LOG: 'LOG'
+  },
+  KEY: 'Сделка.ID',
+  CLOSED_RE: /(закры|успеш|неуспеш|оплач)/i,
+  PHONE_SPLIT_RE: /[;,]/,
+  COLORS: { NEW:'#ccffcc', URGENT:'#ffe599', OVERDUE:'#f4cccc', LONG:'#fff2cc' },
+  STATUS_COLORS: {
+    'Закрыто и не реализовано': '#f4cccc', // light red
+    'Отменен в Рестоплейс': '#f4cccc',      // light red
+    'НДЗ': '#f4cccc',                        // light red (не дозвонились)
+
+    'Взяли в работу': '#fff2cc',            // light yellow
+
+    'Контроль оплаты': '#cfe2f3',           // light blue / pending
+    'Перенос с открытой датой': '#eeeeee',  // light gray
+    'Автораспределение': '#eeeeee',         // light gray (новая, ещё не классифицирована)
+
+    'Успешно в РП': '#d9ead3',              // light green
+    'Оплачено': '#d9ead3',                  // light green
+    'Успешно реализовано': '#d9ead3',       // light green
+
+    'Вопрос к бару': '#ead1dc'              // light purple
+  },
+  PRESERVE_STYLES: true, // Не трогаем оформление листов при обновлениях
+
+  // Синонимы колонок (распознавание по названиям)
+  MAP: {
+    // DEAL
+    'Сделка.ID': ['ID','id','Сделака.ID'],
+    'Сделка.Название': ['Название сделки','Название'],
+    'Сделка.Ответственный': ['Ответственный'],
+    'Сделка.Статус': ['Этап сделки','Статус'],
+    'Сделка.Бюджет': ['Бюджет'],
+    'Сделка.Дата создания': ['Дата создания','DATE'],
+    'Сделка.Дата закрытия': ['Дата закрытия'],
+    'Сделка.Теги': ['Теги сделки','Теги'],
+    'Кем создана': ['Автор','Создатель'],
+
+    // CONTACT
+    'Контакт.ФИО': ['Основной контакт','Контакт.Имя','Контакт'],
+    'Контакт.Телефон': ['Телефон','Phone','Рабочий телефон (контакт)'],
+    'Контакт.Номер линии MANGO OFFICE': ['Номер линии MANGO OFFICE (контакт)'],
+    'Сделка.Номер линии MANGO OFFICE': ['Номер линии MANGO OFFICE'],
+
+    // RESERVATION
+    'Сделка.Бар (deal)': ['Бар (deal)'],
+    'Сделка.Дата брони': ['Дата брони','Бронь.Дата'],
+    'Сделка.Время прихода': ['Время прихода'],
+    'Сделка.Кол-во гостей': ['Кол-во гостей'],
+    'Сделка.Комментарий МОБ': ['Комментарий МОБ'],
+    'Сделка.R.Статусы гостей': ['R.Статусы гостей'],
+
+    // UTM / SOURCE
+    'Сделка.UTM_SOURCE': ['UTM_SOURCE','utm_source'],
+    'Сделка.UTM_MEDIUM': ['UTM_MEDIUM','utm_medium'],
+    'Сделка.UTM_CAMPAIGN': ['UTM_CAMPAIGN','utm_campaign'],
+    'Сделка.UTM_CONTENT': ['UTM_CONTENT','utm_content'],
+    'Сделка.UTM_TERM': ['UTM_TERM','utm_term'],
+    'Сделка.utm_referrer': ['utm_referrer','referer','REFERRER','REFERER'],
+    'Сделка.Источник': ['Источник','Source'],
+    'Сделка.R.Источник сделки': ['R.Источник сделки'],
+    'Сделка.Тип лида': ['Тип лида'],
+
+    // ANALYTICS
+    'Сделка.YM_CLIENT_ID': ['YM_CLIENT_ID'],
+    'Сделка._ym_uid': ['_ym_uid'],
+    'Сделка.GA_CLIENT_ID': ['GA_CLIENT_ID'],
+    'Сделка.FORMID': ['FORMID'],
+    'Сделка.FORMNAME': ['FORMNAME'],
+    'Сделка.BUTTON_TEXT': ['BUTTON_TEXT'],
+    'Сделка.DATE': ['DATE'],
+    'Сделка.TIME': ['TIME'],
+    'Сделка.REFERER': ['REFERER'],
+
+    // ADDITIONAL
+    'Сделка.R.Тег города': ['R.Тег города'],
+    'Сделка.ПО': ['ПО'],
+    'Сделка.Причина отказа (ОБ)': ['Причина отказа (ОБ)'],
+    'Примечание 1': ['Сделка.Примечания(через ;)','Примечания(через ;)'],
+    'Связанные сделки': [],
+    'Объединено': [],
+
+    // SITE (лист "Заявки с Сайта")
+    'Site.Name': ['Name','Имя'],
+    'Site.Phone': ['Phone','Телефон'],
+    'Site.Email': ['Email','E-mail'],
+    'Site.Date': ['Date','Дата'],
+    'Site.Time': ['Time','Время'],
+    'Site.Quantity': ['Quantity','Кол-во'],
+    'Site.Form name': ['Form name','Форма'],
+    'Site.utm_source': ['utm_source'],
+    'Site.utm_medium': ['utm_medium'],
+    'Site.utm_campaign': ['utm_campaign'],
+    'Site.referer': ['referer','utm_referrer'],
+    'Site.button_text': ['button_text','BUTTON_TEXT'],
+
+    // RESERVES RP
+    'Res.Name': ['Имя'],
+    'Res.Phone': ['Телефон','Phone'],
+    'Res.Email': ['Email'],
+    'Res.Datetime': ['Дата/время','Дата','Datetime'],
+    'Res.Amount': ['Счёт, ₽','Счет, ₽','Сумма','Amount'],
+    'Res.Guests': ['Гостей','Кол-во гостей'],
+    'Res.Source': ['Источник','Source'],
+
+    // GUESTS RP
+    'Guests.Name': ['Имя','Name'],
+    'Guests.Phone': ['Телефон','Phone'],
+    'Guests.Email': ['Email'],
+    'Guests.Visits': ['Кол-во визитов','VISITS_COUNT'],
+    'Guests.Total': ['Общая сумма','TOTAL_AMOUNT','Сумма'],
+    'Guests.FirstVisit': ['Первый визит','FIRST_VISIT'],
+    'Guests.LastVisit': ['Последний визит','LAST_VISIT']
+  },
+
+  // Секции — порядок фиксированный
+  SECTIONS: [
+    { title:'📝 ИНФОРМАЦИЯ О СДЕЛКЕ', cols: [
+      'Сделка.ID','Сделка.Название','Сделка.Ответственный','Сделка.Статус',
+      'Сделка.Бюджет','Сделка.Дата создания','Сделка.Теги','Сделка.Дата закрытия'
+    ]},
+    { title:'👤 КОНТАКТ', cols: [
+      'Контакт.ФИО','Контакт.Телефон','Контакт.Номер линии MANGO OFFICE','Сделка.Номер линии MANGO OFFICE'
+    ]},
+    { title:'🕒 БРОНЬ', cols: [
+      'Сделка.Бар (deal)','Сделка.Дата брони','Сделка.Время прихода','Сделка.Кол-во гостей',
+      'Сделка.Комментарий МОБ','Сделка.R.Статусы гостей'
+    ]},
+    { title:'📊 UTM/ИСТОЧНИК', cols: [
+      'Сделка.Источник','Сделка.Тип лида','Сделка.R.Источник сделки',
+      'Сделка.R.Источник ТЕЛ сделки',
+      'Сделка.UTM_SOURCE','Сделка.UTM_MEDIUM','Сделка.UTM_CAMPAIGN',
+      'Сделка.UTM_TERM','Сделка.UTM_CONTENT','Сделка.utm_referrer'
+    ]},
+    { title:'🔍 АНАЛИТИКА', cols: [
+      'Сделка.YM_CLIENT_ID','Сделка.GA_CLIENT_ID','Сделка.FORMNAME','Сделка.REFERER',
+      'Сделка.FORMID','Сделка.DATE','Сделка.TIME','Сделка.BUTTON_TEXT'
+    ]},
+    { title:'📌 ДОПОЛНИТЕЛЬНО', cols: [
+      'Сделка.R.Тег города','Сделка.ПО','Сделка.Причина отказа (ОБ)','Примечание 1','Связанные сделки','Объединено'
+    ]},
+    { title:'🟦 SITE/RESERVES/GUESTS (обогащение)', cols: [
+      'Site.Последняя заявка','Site.utm_source','Site.utm_medium','Site.utm_campaign',
+      'Сделка.R.Источник ТЕЛ сделки',
+      'RP.Визитов','RP.Сумма ₽','RP.Последний визит',
+      'Guests.Визитов','Guests.Сумма ₽','Guests.Первый визит','Guests.Последний визит'
+    ]},
+    { title:'🧮 АВТО-ПОЛЯ', cols: ['Возраст сделки (дн.)','Дней до брони'] }
+  ]
+};
+/************ КОНЕЦ КОНФИГА ************/
+
+
+/** ===== ПУБЛИЧНЫЕ ТОЧКИ ЗАПУСКА ===== **/
+function buildWorkingFromFive() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // 1) Источники
+  const tNew0  = readTable(ss, CFG.SHEETS.NEW);
+  const tFull0 = readTable(ss, CFG.SHEETS.FULL);
+  const tSite  = readTable(ss, CFG.SHEETS.SITE);
+  const tRes   = readTable(ss, CFG.SHEETS.RES);
+  const tGue   = readTable(ss, CFG.SHEETS.GUE);
+  const tCall  = readTable(ss, CFG.SHEETS.CALL);
+
+  // Канонизируем заголовки сделок по словарю CFG.MAP,
+  // чтобы поля вроде "Дата создания" → "Сделка.Дата создания",
+  // "Бронь.Дата" → "Сделка.Дата брони" и т.п. не терялись при объединении.
+  const tNew  = canonicalizeTable(tNew0);
+  const tFull = canonicalizeTable(tFull0);
+
+  // 2) Заголовок: NEW + добавки из FULL
+  const unionDealHeader = makeUnionHeader(tNew.header, tFull.header);
+
+  // 3) Словарь ID → запись (приоритет NEW)
+  const idIdxNew = unionDealHeader.indexOf('Сделка.ID');
+  if (idIdxNew === -1) throw new Error('Не найдена "Сделка.ID"');
+
+  const mappedFull = normalizeRowsToHeader(unionDealHeader, tFull.header, tFull.rows);
+  const mappedNew  = normalizeRowsToHeader(unionDealHeader, tNew.header,  tNew.rows);
+
+  const dict = {};
+  mappedFull.forEach(row => { const id = String(row[idIdxNew]||'').trim(); if (id) dict[id]=row; });
+  mappedNew.forEach(row  => { const id = String(row[idIdxNew]||'').trim(); if (id) dict[id]=row; });
+
+  // 4) Обогащение по телефону
+  const siteAgg = aggregateSiteByPhone(tSite);
+  const resAgg  = aggregateResByPhone(tRes);
+  const gueAgg  = aggregateGuestsByPhone(tGue);
+
+  const createdKey = chooseDateKey(unionDealHeader);
+  const bookingIdx = indexOfAny(unionDealHeader, ['Сделка.Дата брони','Бронь.Дата']);
+  const phoneIdx = indexOfAny(unionDealHeader, ['Контакт.Телефон','Телефон','Phone']);
+  const iMangoContact = indexOfAny(unionDealHeader, ['Контакт.Номер линии MANGO OFFICE']);
+  const iMangoDeal    = indexOfAny(unionDealHeader, ['Сделка.Номер линии MANGO OFFICE']);
+  const ctMap = buildCalltrackingMap(tCall);
+
+  // 5) Хвосты enrichment + авто
+  const enrichCols = [
+    'Site.Последняя заявка','Site.utm_source','Site.utm_medium','Site.utm_campaign',
+    'Сделка.R.Источник ТЕЛ сделки',
+    'RP.Визитов','RP.Сумма ₽','RP.Последний визит',
+    'Guests.Визитов','Guests.Сумма ₽','Guests.Первый визит','Guests.Последний визит'
+  ];
+  const autoCols = ['Возраст сделки (дн.)','Дней до брони'];
+  const finalHeader = [...unionDealHeader, ...enrichCols, ...autoCols];
+
+  // 6) Строим строки (пока в порядке finalHeader)
+  const records = Object.values(dict);
+  records.sort((a,b) => toTs(a[unionDealHeader.indexOf(createdKey)]) < toTs(b[unionDealHeader.indexOf(createdKey)]) ? 1 : -1);
+
+  const iStatus = unionDealHeader.indexOf('Сделка.Статус');
+
+  const rowsRaw = records.map(row => {
+    const out = [...row];
+
+    // нормализация статуса
+    if (iStatus > -1) out[iStatus] = normalizeStatus(out[iStatus]);
+
+    // телефон
+    const phoneRaw = (phoneIdx>-1 ? row[phoneIdx] : '');
+    const phone = firstCleanPhone(phoneRaw);
+
+    // SITE
+    const s = phone ? siteAgg.get(phone) : null;
+    out.push(s?.lastDate || '');
+    out.push(s?.utm_source || '');
+    out.push(s?.utm_medium || '');
+    out.push(s?.utm_campaign || '');
+    // CT TAG by Mango line (Контакт/Сделка)
+    const mangoC = (iMangoContact > -1 ? row[iMangoContact] : '');
+    const mangoD = (iMangoDeal    > -1 ? row[iMangoDeal]    : '');
+    const ctTag  = findCalltrackingTag(ctMap, mangoC, mangoD);
+    out.push(ctTag);
+
+    // RESERVES
+    const r = phone ? resAgg.get(phone) : null;
+    out.push(r?.visits || 0);
+    out.push(r?.amount || 0);
+    out.push(r?.lastVisit || '');
+
+    // GUESTS
+    const g = phone ? gueAgg.get(phone) : null;
+    out.push(g?.visits || 0);
+    out.push(g?.total || 0);
+    out.push(g?.firstVisit || '');
+    out.push(g?.lastVisit || '');
+
+    // AUTO
+    const createdVal = createdKey ? row[unionDealHeader.indexOf(createdKey)] : '';
+    const age = createdVal ? daysBetween(createdVal, new Date()) : '';
+    const bookingVal = (bookingIdx>-1) ? row[bookingIdx] : '';
+    const daysTo = bookingVal ? daysBetween(new Date(), bookingVal) * -1 : '';
+    out.push(age);
+    out.push(daysTo);
+
+    return out;
+  });
+
+  // 7) Переупорядочиваем колонки строго под секции
+  const orderInfo = computeOrder(finalHeader, CFG.SECTIONS); // {order, spans}
+  const headerOrderedRaw = orderInfo.order.map(i => finalHeader[i]);
+  const rows = rowsRaw.map(r => orderInfo.order.map(i => r[i]));
+
+  // 7-) Пересчёт «R.Источник ТЕЛ сделки» строго по номерам из колонок
+  // Читаем номера из упорядоченного заголовка (точные имена колонок, без humanize)
+  (function enforceCtTagByOrderedColumns(){
+    const iMangoC2 = headerOrderedRaw.indexOf('Контакт.Номер линии MANGO OFFICE');
+    const iMangoD2 = headerOrderedRaw.indexOf('Сделка.Номер линии MANGO OFFICE');
+    const iCtOut2  = headerOrderedRaw.indexOf('Сделка.R.Источник ТЕЛ сделки');
+    if (iCtOut2 === -1) return; // нет целевой колонки — ничего не делаем
+
+    // Используем карту calltracking (номер -> тег), собранную выше
+    rows.forEach((r)=>{
+      const tag = findCalltrackingTag(ctMap, r[iMangoC2], r[iMangoD2]);
+      r[iCtOut2] = tag || '';
+    });
+  })();
+
+  // 8) Человекочитаемые заголовки без префиксов (Сделка./Site./Guests./…)
+  const displayHeader = headerOrderedRaw.map(humanizeHeader);
+
+  // 9) Рендер в РАБОЧИЙ АМО
+  const sh = ss.getSheetByName(CFG.SHEETS.OUT) || ss.insertSheet(CFG.SHEETS.OUT);
+  if (CFG.PRESERVE_STYLES) {
+    // сохраняем оформление и значения первой строки (названия блоков)
+    const maxR = sh.getMaxRows();
+    const maxC = sh.getMaxColumns();
+    if (maxR > 1 && maxC > 0) sh.getRange(2, 1, maxR - 1, maxC).clearContent();
+  } else {
+    sh.clear();
+  }
+
+  // гарантируем размер сетки под шапку и данные
+  ensureGrid(sh, (rows.length || 0) + 2, displayHeader.length);
+
+  // — строка 1 (секции) + строка 2 (человечные заголовки)
+  if (!CFG.PRESERVE_STYLES) {
+    drawSectionTitlesBySpans(sh, orderInfo.spans);
+    {
+      const headerRange = sh.getRange(2,1,1,displayHeader.length);
+      // На некоторых листах на всю колонку навешана проверка данных,
+      // из‑за чего запись заголовка в строку 2 падает с ошибкой.
+      // Чистим validation только на строке заголовков, стили не трогаем.
+      headerRange.clearDataValidations();
+      headerRange.setValues([displayHeader]).setFontWeight('bold');
+    }
+    sh.setFrozenRows(2);
+
+    // — фильтр по строке заголовка
+    const oldFilter = (typeof sh.getFilter === 'function') ? sh.getFilter() : null;
+    if (oldFilter) oldFilter.remove();
+    sh.getRange(2,1,1,displayHeader.length).createFilter();
+  } else {
+    // только подпишем заголовок без изменения оформления и восстановим названия секций в строке 1
+    drawSectionTitlesPreserve(sh, orderInfo.spans);
+    {
+      const headerRange = sh.getRange(2,1,1,displayHeader.length);
+      // Снимем validation только на строке заголовков, чтобы не конфликтовало с проверками данных на колонках
+      headerRange.clearDataValidations();
+      headerRange.setValues([displayHeader]);
+    }
+  }
+
+  // — данные
+  if (rows.length) {
+    sh.getRange(3,1,rows.length,displayHeader.length).setValues(rows);
+  }
+
+  // Format TIME column as time-only (hh:mm) regardless of PRESERVE_STYLES
+  (function ensureTimeFormat(){
+    const timeColIdx = displayHeader.indexOf('TIME');
+    if (timeColIdx > -1 && rows.length) {
+      sh.getRange(3, timeColIdx + 1, rows.length, 1).setNumberFormat('hh:mm');
+    }
+  })();
+
+  // Всегда аккуратно перекрашиваем ТОЛЬКО колонку "Статус" по тексту
+  paintStatusColumn(sh, displayHeader, rows);
+
+  if (!CFG.PRESERVE_STYLES) {
+    // — границы секций (по точным span’ам)
+    drawSectionBordersBySpans(sh, orderInfo.spans, rows.length + 2);
+
+    // — подсветка ТОЛЬКО колонки ID (оформление — только если стили можно трогать)
+    colorByRules(sh, displayHeader, rows);
+  }
+
+  // Всегда создаём/обновляем листы «НОВЫЕ» и «ПРОБЛЕМНЫЕ» независимо от PRESERVE_STYLES
+  makeSubsets(ss, displayHeader, rows);
+
+  logAppend(ss, `Обновлено: ${rows.length} строк`);
+}
+
+function diagnoseWorkbook5() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const diag = ss.getSheetByName(CFG.SHEETS.DIAG) || ss.insertSheet(CFG.SHEETS.DIAG);
+  diag.clear(); let r = 1;
+
+  const names = [CFG.SHEETS.NEW, CFG.SHEETS.FULL, CFG.SHEETS.SITE, CFG.SHEETS.RES, CFG.SHEETS.GUE];
+  diag.getRange(r++,1).setValue('Листы в книге:'); 
+  diag.getRange(r,1,names.length,1).setValues(names.map(n=>[n])); r+=names.length+1;
+
+  const meta = {};
+  names.forEach(n => { meta[n] = dumpSheetMeta(ss, diag, n, r); r = meta[n].nextRow; });
+
+  r++;
+  diag.getRange(r++,1).setValue('==== Сравнение колонок (Амо Выгрузка vs Выгрузка Амо Полная) ====');
+  r = compareHeaders(diag, r, meta[CFG.SHEETS.NEW].header, meta[CFG.SHEETS.FULL].header);
+
+  const inv = buildInverseMap(CFG.MAP);
+  const deals = readTable(ss, CFG.SHEETS.NEW);
+  const phoneIdxDeals = findIndexBySynonyms(inv, deals.header, ['Контакт.Телефон']);
+  const phonesDeals = collectPhones(deals.rows, phoneIdxDeals);
+
+  const site = readTable(ss, CFG.SHEETS.SITE);
+  const res  = readTable(ss, CFG.SHEETS.RES);
+  const gue  = readTable(ss, CFG.SHEETS.GUE);
+
+  const siteAgg = aggregateSiteByPhone(site);
+  const resAgg  = aggregateResByPhone(res);
+  const gueAgg  = aggregateGuestsByPhone(gue);
+
+  const matchStats = calcMatchStats(phonesDeals, {siteAgg, resAgg, gueAgg});
+
+  r++;
+  diag.getRange(r++,1).setValue('==== Покрытие по телефону (из "Амо Выгрузка") ====');
+  diag.getRange(r++,1).setValue(`Всего сделок с телефоном: ${matchStats.totalWithPhone}`);
+  diag.getRange(r++,1).setValue(`Есть в "Заявки с Сайта": ${matchStats.site}%`);
+  diag.getRange(r++,1).setValue(`Есть в "Reserves RP": ${matchStats.res}%`);
+  diag.getRange(r++,1).setValue(`Есть в "Guests RP": ${matchStats.gue}%`);
+  diag.autoResizeColumns(1, diag.getMaxColumns());
+}
+
+/** ===== ТРИГГЕР ===== **/
+function setHourlyTrigger(){
+  ScriptApp.getProjectTriggers().forEach(t=>{
+    if (t.getHandlerFunction()==='buildWorkingFromFive') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('buildWorkingFromFive').timeBased().everyHours(1).create();
+}
+
+/** ===== УТИЛИТЫ ЧТЕНИЯ/ЗАПИСИ ===== **/
+function dumpSheetMeta(ss, out, name, row){
+  const sh = ss.getSheetByName(name);
+  if (!sh){ out.getRange(row++,1).setValue(`⚠ Нет листа: ${name}`); return {header:[],rows:[],nextRow:row}; }
+  const v = sh.getDataRange().getValues();
+  const header = (v[0]||[]).map(String);
+  const data = v.slice(1).filter(r => r.some(x => String(x).trim()!==''));
+  out.getRange(row++,1).setValue(`Лист: ${name}`);
+  out.getRange(row++,1).setValue(`Строк данных: ${data.length}, Колонок: ${header.length}`);
+  if (header.length){ out.getRange(row,1,1,header.length).setValues([header]); row++; }
+  const sample = data.slice(0,3);
+  if (sample.length){ out.getRange(row,1,sample.length,Math.max(header.length,sample[0].length)).setValues(sample); row+=sample.length; }
+  row++;
+  return {header,rows:data,nextRow:row};
+}
+function compareHeaders(sh, row, a, b){
+  const setA = new Set(a), setB = new Set(b);
+  const onlyB = [...setB].filter(h => !setA.has(h)).sort();
+  const onlyA = [...setA].filter(h => !setB.has(h)).sort();
+  sh.getRange(row++,1).setValue('Только в "Выгрузка Амо Полная":');
+  if (onlyB.length) { sh.getRange(row,1,onlyB.length,1).setValues(onlyB.map(h=>[h])); row+=onlyB.length; } else row++;
+  sh.getRange(row++,1).setValue('Только в "Амо Выгрузка":');
+  if (onlyA.length) { sh.getRange(row,1,onlyA.length,1).setValues(onlyA.map(h=>[h])); row+=onlyA.length; } else row++;
+  return row;
+}
+function readTable(ss, name){
+  const sh = ss.getSheetByName(name);
+  if (!sh) return {header:[],rows:[]};
+  const v = sh.getDataRange().getValues();
+  const header = (v[0]||[]).map(String);
+  const rows = v.slice(1).filter(r=>r.some(x=>String(x).trim()!==''));
+  return {header, rows};
+}
+function makeUnionHeader(prio, other){ const set = new Set(prio); other.forEach(h => set.add(h)); return [...set]; }
+function normalizeRowsToHeader(targetHeader, srcHeader, rows){
+  const idx = {}; srcHeader.forEach((h,i)=>idx[h]=i);
+  return rows.map(r => targetHeader.map(h => idx[h]!=null ? r[idx[h]] : ''));
+}
+function buildInverseMap(map){
+  const inv={};
+  Object.keys(map).forEach(canon=>{
+    (map[canon]||[]).forEach(a => inv[normalizeHeader(a)] = canon);
+    inv[normalizeHeader(canon)] = canon;
+  });
+  return inv;
+}
+function normalizeHeader(h){ return String(h||'').trim().toLowerCase(); }
+function findIndexBySynonyms(inv, header, canonNames){
+  const norm = header.map(normalizeHeader);
+  for (const name of canonNames){
+    const canon = buildInverseMap({[name]: CFG.MAP[name]||[]});
+    for (let i=0;i<header.length;i++){
+      const h = header[i];
+      const mapped = canon[normalizeHeader(h)];
+      if (mapped) return i;
+    }
+  }
+  return -1;
+}
+function indexOfAny(header, names){ 
+  const inv = buildInverseMap(CFG.MAP);
+  const normH = header.map(normalizeHeader);
+  for (const nm of names){
+    const canon = inv[normalizeHeader(nm)] || nm;
+    for (let i=0;i<header.length;i++){
+      const mapped = inv[normH[i]] || header[i];
+      if (mapped === canon) return i;
+    }
+  }
+  return -1;
+}
+
+function canonicalizeTable(table){
+  if (!table || !Array.isArray(table.header)) return table;
+  const inv = buildInverseMap(CFG.MAP);
+  const seen = new Set();
+  const canonHeader = table.header.map(h => {
+    const mapped = inv[normalizeHeader(h)] || h; // переводим в канон, если есть
+    // если такой канон уже встречался (дубликаты колонок) — оставляем исходное имя, чтобы не потерять данные
+    if (seen.has(mapped)) return h;
+    seen.add(mapped);
+    return mapped;
+  });
+  return { header: canonHeader, rows: table.rows };
+}
+
+/** ---- Телефоны и агрегации ---- **/
+// === Коллтрекинг: карта номер -> тег ===
+function buildCalltrackingMap(t){
+  const map = new Map();
+  if (!t || !t.rows || !t.rows.length) return map;
+
+  // Ожидаем явные заголовки на листе «КоллТрекинг»
+  // A — Контакт.Номер линии MANGO OFFICE
+  // B — R.Источник ТЕЛ сделки
+  const header = Array.isArray(t.header) ? t.header : [];
+  const hnorm = header.map(h => String(h || '').trim().toLowerCase());
+  let iNumber = hnorm.indexOf('контакт.номер линии mango office');
+  let iTag    = hnorm.indexOf('r.источник тел сделки');
+
+  // Фолбэки: если шапки нет — A=номер, B=тег
+  if (iNumber === -1) iNumber = 0;
+  if (iTag === -1)    iTag    = (header.length >= 2 ? 1 : 0);
+
+  t.rows.forEach(r => {
+    const num = cleanPhoneDigits(r[iNumber]);
+    const raw = String(r[iTag] || '').trim();
+    if (!num || !raw) return;
+
+    const tag = normalizeCtTag(raw); // только osn_tel/ya_tel/rclub_tel/2gis_tel/smm_tel (+ osn -> osn_tel)
+    if (tag) map.set(num, tag);
+  });
+
+  return map;
+}
+
+function normalizeCtTag(src){
+  const s = String(src || '').trim().toLowerCase();
+  if (s === 'osn') return 'osn_tel';
+  const allowed = ['osn_tel','ya_tel','rclub_tel','2gis_tel','smm_tel'];
+  return allowed.includes(s) ? s : '';
+}
+
+// Возвращает тег по номеру линии Mango (контакт/сделка)
+function findCalltrackingTag(ctMap, mangoContact, mangoDeal){
+  const a = cleanPhoneDigits(mangoContact);
+  const b = cleanPhoneDigits(mangoDeal);
+  if (a && ctMap.has(a)) return ctMap.get(a);
+  if (b && ctMap.has(b)) return ctMap.get(b);
+  return '';
+}
+function cleanPhoneDigits(s){
+  if (s==null) return '';
+  const d = String(s).replace(/\D/g,'');
+  if (!d) return '';
+  if (d.length===11 && /^[78]/.test(d)) return d.slice(1);
+  if (d.length>=10) return d.slice(-10);
+  return d;
+}
+function firstCleanPhone(raw){
+  if (!raw) return '';
+  const parts = String(raw).split(CFG.PHONE_SPLIT_RE).map(s=>s.trim()).filter(Boolean);
+  for (const p of parts){
+    const c = cleanPhoneDigits(p);
+    if (c) return c;
+  }
+  return cleanPhoneDigits(raw);
+}
+function collectPhones(rows, idx){
+  const set = new Set();
+  if (idx<0) return set;
+  rows.forEach(r=>{
+    const p = firstCleanPhone(r[idx]);
+    if (p) set.add(p);
+  });
+  return set;
+}
+// SITE
+function aggregateSiteByPhone(t){
+  const idx = {
+    phone: indexOfAny(t.header, ['Site.Phone','Phone','Телефон']),
+    date:  indexOfAny(t.header, ['Site.Date','Date','Дата']),
+    time:  indexOfAny(t.header, ['Site.Time','Time','Время']),
+    utm_s: indexOfAny(t.header, ['Site.utm_source','utm_source']),
+    utm_m: indexOfAny(t.header, ['Site.utm_medium','utm_medium']),
+    utm_c: indexOfAny(t.header, ['Site.utm_campaign','utm_campaign'])
+  };
+  const map = new Map();
+  t.rows.forEach(r=>{
+    const ph = firstCleanPhone(r[idx.phone]); if (!ph) return;
+    const dt = mergeDateTime(r[idx.date], r[idx.time]);
+    const cur = map.get(ph) || {};
+    if (!cur.lastDate || toTs(dt) > toTs(cur.lastDate)) {
+      cur.lastDate = dt;
+      cur.utm_source = r[idx.utm_s] || cur.utm_source || '';
+      cur.utm_medium = r[idx.utm_m] || cur.utm_medium || '';
+      cur.utm_campaign = r[idx.utm_c] || cur.utm_campaign || '';
+    }
+    map.set(ph, cur);
+  });
+  return map;
+}
+// RESERVES
+function aggregateResByPhone(t){
+  const idx = {
+    phone: indexOfAny(t.header, ['Res.Phone','Телефон','Phone']),
+    amount:indexOfAny(t.header, ['Res.Amount','Счёт, ₽','Amount','Сумма']),
+    dt:    indexOfAny(t.header, ['Res.Datetime','Дата/время','Datetime','Дата'])
+  };
+  const map = new Map();
+  t.rows.forEach(r=>{
+    const ph = firstCleanPhone(r[idx.phone]); if (!ph) return;
+    const amount = toNumber(r[idx.amount]);
+    const dt = r[idx.dt];
+    const cur = map.get(ph) || {visits:0, amount:0, lastVisit:''};
+    cur.visits += 1;
+    cur.amount += amount;
+    if (!cur.lastVisit || toTs(dt) > toTs(cur.lastVisit)) cur.lastVisit = dt;
+    map.set(ph, cur);
+  });
+  return map;
+}
+// GUESTS
+function aggregateGuestsByPhone(t){
+  const idx = {
+    phone: indexOfAny(t.header, ['Guests.Phone','Телефон','Phone']),
+    visits:indexOfAny(t.header, ['Guests.Visits','Кол-во визитов','VISITS_COUNT']),
+    total: indexOfAny(t.header, ['Guests.Total','Общая сумма','TOTAL_AMOUNT']),
+    first: indexOfAny(t.header, ['Guests.FirstVisit','Первый визит','FIRST_VISIT']),
+    last:  indexOfAny(t.header, ['Guests.LastVisit','Последний визит','LAST_VISIT'])
+  };
+  const map = new Map();
+  t.rows.forEach(r=>{
+    const ph = firstCleanPhone(r[idx.phone]); if (!ph) return;
+    const cur = map.get(ph) || {visits:0, total:0, firstVisit:'', lastVisit:''};
+    cur.visits += toNumber(r[idx.visits]) || 0;
+    cur.total += toNumber(r[idx.total]) || 0;
+    const fv = r[idx.first], lv = r[idx.last];
+    if (!cur.firstVisit || (fv && toTs(fv) < toTs(cur.firstVisit))) cur.firstVisit = fv;
+    if (!cur.lastVisit  || (lv && toTs(lv)  > toTs(cur.lastVisit)))  cur.lastVisit  = lv;
+    map.set(ph, cur);
+  });
+  return map;
+}
+function toNumber(v){ const n = Number(String(v).replace(/\s| /g,'').replace(',','.')); return isNaN(n)?0:n; }
+function mergeDateTime(d,t){
+  if (!d && !t) return '';
+  if (d instanceof Date && (!t || t instanceof Date===false)) return d;
+  if (d && t) return new Date(`${fmtDateISO(d)} ${String(t).slice(0,8)}`);
+  return d||t||'';
+}
+function fmtDateISO(d){
+  if (d instanceof Date) {
+    const y=d.getFullYear(), m=('0'+(d.getMonth()+1)).slice(-2), da=('0'+d.getDate()).slice(-2);
+    return `${y}-${m}-${da}`;
+  }
+  const s=String(d).trim();
+  const m=s.match(/^(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{2,4})/);
+  if (m){
+    const dd=('0'+m[1]).slice(-2), mo=('0'+m[2]).slice(-2), yy=m[3].length===2?('20'+m[3]):m[3];
+    return `${yy}-${mo}-${dd}`;
+  }
+  return s;
+}
+function toTs(v){
+  if (!v) return 0;
+  if (v instanceof Date) return v.getTime();
+  const s=String(v).trim();
+  const m=s.match(/^(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{2,4})(.*)$/);
+  if (m){
+    let y=m[3]; if (y.length===2) y='20'+y;
+    const d=new Date(`${y}-${('0'+m[2]).slice(-2)}-${('0'+m[1]).slice(-2)} ${m[4]||''}`); 
+    return d.getTime()||0;
+  }
+  const t=Date.parse(s); return isNaN(t)?0:t;
+}
+function daysBetween(a,b){
+  const ta = toTs(a), tb = toTs(b);
+  if (!ta || !tb) return '';
+  return Math.floor((tb-ta)/(1000*60*60*24));
+}
+function chooseDateKey(header){
+  if (header.includes('Сделка.Дата создания')) return 'Сделка.Дата создания';
+  if (header.includes('Сделка.DATE')) return 'Сделка.DATE';
+  return header[0];
+}
+
+// ---- Нормализация статусов сделки ("автоматы") ----
+function normalizeStatus(raw){
+  let s = String(raw||'').trim();
+  // убираем префикс "ВСЕ БАРЫ СЕТИ" + любой разделитель (/, -, —, –) и лишние пробелы
+  s = s.replace(/^\s*все\s*бары\s*сети\s*(?:[\/\\|:\-–—]\s*)?/i, '');
+  // если ячейка содержит только этот префикс — чистим полностью
+  s = s.replace(/^\s*все\s*бары\s*сети\s*$/i, '');
+  // срезаем хвосты вида " - что-то", "— что-то", "– что-то"
+  s = s.replace(/\s*(?:-|–|—)\s*.*$/, '').trim();
+
+  // правила нормализации (от более специфичных к общим)
+  const rules = [
+    { re: /успеш.*в\s*рп/i,                          norm: 'Успешно в РП' },
+    { re: /успеш.*реализ/i,                           norm: 'Успешно реализовано' },
+    { re: /оплач/i,                                   norm: 'Оплачено' },
+    { re: /контрол[ья]\s*оплат/i,                    norm: 'Контроль оплаты' },
+    { re: /перенос\s*с\s*открытой\s*дат/i,          norm: 'Перенос с открытой датой' },
+    { re: /вопрос\s*к\s*бару/i,                      norm: 'Вопрос к бару' },
+    { re: /отмен[её]н\s*в\s*рестоплейс/i,            norm: 'Отменен в Рестоплейс' },
+    { re: /взял[аи]?\s*в\s*работу|нов(ый|ая)\s*лид/i, norm: 'Взяли в работу' },
+    { re: /ндз|не\s*дозв|не\s*дозвонил/i,             norm: 'НДЗ' },
+    { re: /закрыто.*не\s*реализ/i,                    norm: 'Закрыто и не реализовано' }
+  ];
+  for (var i=0;i<rules.length;i++){
+    if (rules[i].re.test(s)) return rules[i].norm;
+  }
+  return s || 'Новый лид';
+}
+
+/** ---- Порядок и оформление ---- **/
+function humanizeHeader(h){
+  const rename = {
+    // Сделка — короткие русские
+    'Сделка.ID':'ID',
+    'Сделка.Название':'Название',
+    'Сделка.Ответственный':'Ответственный',
+    'Сделка.Статус':'Статус',
+    'Сделка.Бюджет':'Бюджет',
+    'Сделка.Дата создания':'Дата создания',
+    'Сделка.Теги':'Теги',
+    'Сделка.Дата закрытия':'Дата закрытия',
+
+    // Обогащение (site/rp/guests)
+    'Site.Последняя заявка':'Последняя заявка',
+    'Guests.Визитов':'Визитов',
+    'Guests.Сумма ₽':'Сумма ₽',
+    'Guests.Первый визит':'Первый визит',
+    'Guests.Последний визит':'Последний визит'
+  };
+  if (rename[h]) return rename[h];
+
+  // Снимаем технические префиксы
+  const prefixes = ['Сделка.', 'Контакт.', 'Site.', 'Guests.', 'Res.', 'RP.'];
+  for (var p of prefixes) { if (h.indexOf(p)===0) { h = h.substring(p.length); break; } }
+  return h;
+}
+
+// Строит точный порядок колонок по секциям
+function computeOrder(header, sections){
+  const idx = {}; header.forEach((h,i)=>idx[h]=i);
+  const order=[]; const spans=[];
+  sections.forEach(sec=>{
+    const present = sec.cols.map(c=>idx[c]).filter(i=>i!=null);
+    if (present.length){
+      order.push(...present);
+      spans.push({title:sec.title, width:present.length});
+    }
+  });
+  // всё остальное — в конец
+  const seen = new Set(order);
+  const rest = header.map((_,i)=>i).filter(i=>!seen.has(i));
+  if (rest.length){ order.push(...rest); spans.push({title:'(прочее)', width:rest.length}); }
+  return {order, spans};
+}
+
+// Рисуем секции по точным span’ам
+function drawSectionTitlesBySpans(sh, spans){
+  let col = 1;
+  spans.forEach(s=>{
+    const r = sh.getRange(1,col,1,Math.max(1,s.width));
+    if (s.width>1) r.merge();
+    r.setValue(s.title).setHorizontalAlignment('center').setFontWeight('bold');
+    col += s.width;
+  });
+}
+
+// Только вписывает значения в первый столбец каждого спана, не трогая слияния/стили
+function drawSectionTitlesPreserve(sh, spans){
+  let col = 1;
+  spans.forEach(s => {
+    // Пишем заголовок только в первый столбец спана. Если там слияние — значение применится к объединённой ячейке.
+    sh.getRange(1, col).setValue(s.title);
+    col += Math.max(1, s.width);
+  });
+}
+function drawSectionBordersBySpans(sh, spans, totalUsedRows){
+  const prop = PropertiesService.getDocumentProperties();
+  const key = `borders_spans_${sh.getSheetId()}_${spans.map(s=>s.width).join('-')}_${totalUsedRows||0}`;
+  if (prop.getProperty(key)) return;
+
+  const usedRows = Math.max(2, Number(totalUsedRows)||2);
+  const totalWidth = spans.reduce((a,s)=>a+s.width,0);
+
+  sh.getRange(2, 1, Math.max(1, usedRows - 1), totalWidth).setBorder(true,true,true,true,true,true);
+
+  let col=1;
+  spans.forEach(s=>{
+    const after = col + s.width - 1;
+    const rng = sh.getRange(1, after, usedRows, 1);
+    rng.setBorder(false, true, false, false, false, false, null, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+    col += s.width;
+  });
+
+  prop.setProperty(key, '1');
+}
+
+/** ---- Гарантируем размеры листа перед записью ---- **/
+function ensureGrid(sh, needRows, needCols){
+  var maxRows = sh.getMaxRows();
+  var maxCols = sh.getMaxColumns();
+  if (maxCols < needCols) {
+    sh.insertColumnsAfter(maxCols, needCols - maxCols);
+  }
+  if (maxRows < needRows) {
+    sh.insertRowsAfter(maxRows, needRows - maxRows);
+  }
+}
+
+/** ---- Подсветка, срезы, логика ---- **/
+// красим только колонку A (ID) и колонку "Статус" по правилам
+function colorByRules(sh, header, rows){
+  const n = Array.isArray(rows) ? rows.length : 0;
+  if (!n) return;
+
+  const start = 3; // первая строка данных
+  const colId = 1; // A
+  const iAge    = header.indexOf('Возраст сделки (дн.)');
+  const iDaysTo = header.indexOf('Дней до брони');
+  const iStatus = header.indexOf('Статус');
+  const iId     = header.indexOf('ID');
+
+  const prev = getKnownIds();
+  const backgrounds = new Array(n).fill(null).map(()=>[null]);
+
+  for (let r = 0; r < n; r++){
+    const row = rows[r];
+    const id       = iId     > -1 ? String(row[iId]||'').trim() : '';
+    const age      = iAge    > -1 ? Number(row[iAge])    : '';
+    const daysLeft = iDaysTo > -1 ? Number(row[iDaysTo]) : '';
+    const status   = iStatus > -1 ? String(row[iStatus]||'') : '';
+
+    let bg = null;
+    if (id && !prev.has(id))                                              bg = CFG.COLORS.NEW;
+    if ((daysLeft === 0 || daysLeft === 1) && !CFG.CLOSED_RE.test(status)) bg = CFG.COLORS.URGENT;
+    if ((typeof daysLeft === 'number' && daysLeft < 0) && !CFG.CLOSED_RE.test(status)) bg = CFG.COLORS.OVERDUE;
+    if (typeof age === 'number' && age > 7)                                bg = CFG.COLORS.LONG;
+
+    backgrounds[r][0] = bg;
+  }
+
+  // Подсветка самой колонки "Статус" по правилам
+  const colStatus1 = (iStatus > -1) ? (iStatus + 1) : -1; // переводим в 1-based индекс колонки
+  if (colStatus1 > 0) {
+    const statusBackgrounds = new Array(n).fill(null).map(()=>[null]);
+    for (let r = 0; r < n; r++){
+      const st = iStatus > -1 ? rows[r][iStatus] : '';
+      statusBackgrounds[r][0] = statusColor(st);
+    }
+    sh.getRange(start, colStatus1, n, 1).setBackgrounds(statusBackgrounds);
+  }
+
+  sh.getRange(start, colId, n, 1).setBackgrounds(backgrounds);
+
+  const ids = rows.map(r => String(iId>-1 ? (r[iId]||'') : '').trim()).filter(Boolean);
+  setKnownIds(new Set(ids));
+}
+
+// Маппер цвета по статусу
+function statusColor(status){
+  const s = normalizeStatus(status);
+  if (CFG.STATUS_COLORS[s]) return CFG.STATUS_COLORS[s];
+  // Fallback по ключевым словам
+  if (/успеш/i.test(s) || /оплач/i.test(s)) return CFG.STATUS_COLORS['Оплачено'];
+  if (/отмен/i.test(s) || /не\s*реализ/i.test(s)) return CFG.STATUS_COLORS['Закрыто и не реализовано'];
+  if (/контрол/i.test(s)) return CFG.STATUS_COLORS['Контроль оплаты'];
+  if (/перенос/i.test(s)) return CFG.STATUS_COLORS['Перенос с открытой датой'];
+  if (/вопрос/i.test(s)) return CFG.STATUS_COLORS['Вопрос к бару'];
+  if (/ндз/i.test(s)) return CFG.STATUS_COLORS['НДЗ'];
+  if (/в\s*работе|взяли\s*в\s*работу/i.test(s)) return CFG.STATUS_COLORS['Взяли в работу'];
+  return null; // нет спец-окраски
+}
+
+/**
+ * Аккуратно красит ТОЛЬКО колонку "Статус" по готовым правилам statusColor(),
+ * не меняя оформление остальных колонок и не завися от CFG.PRESERVE_STYLES.
+ */
+function paintStatusColumn(sh, header, rows){
+  const n = Array.isArray(rows) ? rows.length : 0;
+  if (!n) return;
+
+  const iStatus = header.indexOf('Статус');
+  if (iStatus < 0) return;
+
+  const colStatus1 = iStatus + 1; // 1-based
+  const startRow = 3;             // данные начинаются со строки 3
+
+  // Собираем фон для каждой строки статуса
+  const backgrounds = new Array(n);
+  for (let r = 0; r < n; r++){
+    const st = rows[r][iStatus];
+    backgrounds[r] = [ statusColor(st) ];
+  }
+
+  // Применяем фоны только к этой одной колонке
+  sh.getRange(startRow, colStatus1, n, 1).setBackgrounds(backgrounds);
+}
+function getKnownIds(){
+  const prop = PropertiesService.getDocumentProperties();
+  const raw = prop.getProperty('known_ids') || '';
+  const set = new Set();
+  raw.split(',').forEach(x=>{ x=x.trim(); if (x) set.add(x); });
+  return set;
+}
+function setKnownIds(set){
+  const prop = PropertiesService.getDocumentProperties();
+  prop.setProperty('known_ids', [...set].join(','));
+}
+
+/** ---- Срезы ---- **/
+function makeSubsets(ss, header, rows){
+  const iAge = header.indexOf('Возраст сделки (дн.)');
+  const iDaysTo = header.indexOf('Дней до брони');
+  const iStatus = header.indexOf('Статус');
+
+  const todayNew = rows.filter(r => toNum(r[iAge])!=='' && toNum(r[iAge])<=7);
+  const problematic = rows.filter(r=>{
+    const days = toNum(r[iDaysTo]);
+    const st = String(r[iStatus]||'');
+    return (days!=='' && (days<=1 || days<0)) && !CFG.CLOSED_RE.test(st);
+  });
+
+  writeSheet(ss, CFG.SHEETS.NEW_ONLY, header, todayNew);
+  writeSheet(ss, CFG.SHEETS.PROBLEM, header, problematic);
+}
+function toNum(v){ const n=Number(v); return isNaN(n)?'':n; }
+function writeSheet(ss, name, header, rows){
+  let sh = ss.getSheetByName(name);
+  if (!sh) sh = ss.insertSheet(name); else sh.clear();
+  sh.getRange(1,1,1,header.length).setValues([header]).setFontWeight('bold');
+  if (rows.length) sh.getRange(2,1,rows.length,header.length).setValues(rows);
+  sh.setFrozenRows(1);
+  const _oldFilterSub = (typeof sh.getFilter === 'function') ? sh.getFilter() : null;
+  if (_oldFilterSub) _oldFilterSub.remove();
+  sh.getRange(1,1,1,header.length).createFilter();
+}
+
+/** ---- Метрики покрытия ---- **/
+function calcMatchStats(phoneSet, dicts){
+  const phones = [...phoneSet];
+  function cover(map){ let k=0; phones.forEach(p=>{ if (map.get(p)) k++; }); return phones.length? Math.round(100*k/phones.length):0; }
+  return { totalWithPhone: phones.length, site: cover(dicts.siteAgg), res: cover(dicts.resAgg), gue: cover(dicts.gueAgg) };
+}
+
+/** ---- ЛОГ ---- **/
+function logAppend(ss, msg){
+  const sh = ss.getSheetByName(CFG.SHEETS.LOG) || ss.insertSheet(CFG.SHEETS.LOG);
+  if (sh.getLastRow()===0) sh.appendRow(['when','message']);
+  sh.appendRow([new Date(), msg]);
+}
+
+/**
+ * Обновляет только колонку "R.Источник ТЕЛ сделки" в листе РАБОЧИЙ АМО,
+ * не меняя форматирование листа. Ищет номера из колонок K и L (по заголовкам),
+ * подставляет тег из листа "КоллТрекинг" (колонка A — номер, B — тег).
+ */
+function updateCtTagsOnWorking(){
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(CFG.SHEETS.OUT);
+  if (!sh) throw new Error('Нет листа "' + CFG.SHEETS.OUT + '"');
+
+  // Заголовки находятся во 2-й строке
+  const header = sh.getRange(2,1,1,sh.getLastColumn()).getValues()[0].map(String);
+
+  const colMangoContact = header.indexOf('Контакт.Номер линии MANGO OFFICE') + 1;
+  const colMangoDeal    = header.indexOf('Сделка.Номер линии MANGO OFFICE') + 1;
+  let   colOut          = header.indexOf('R.Источник ТЕЛ сделки') + 1;
+
+  if (colMangoContact <= 0 || colMangoDeal <= 0) {
+    throw new Error('Не найдены заголовки "Контакт.Номер линии MANGO OFFICE" или "Сделка.Номер линии MANGO OFFICE" во 2-й строке листа "' + CFG.SHEETS.OUT + '"');
+  }
+  // Если пользователь держит строгую V-колонку — используем её, иначе ищем по заголовку
+  if (colOut <= 0) colOut = 22; // V
+
+  const lastRow = sh.getLastRow();
+  const n = Math.max(0, lastRow - 2);
+  if (n === 0) return;
+
+  const mangoC = sh.getRange(3, colMangoContact, n, 1).getValues();
+  const mangoD = sh.getRange(3, colMangoDeal,    n, 1).getValues();
+
+  // Собираем карту номер->тег из листа "КоллТрекинг" (A: номер, B: тег, C: канал)
+  const tCall = readTable(ss, CFG.SHEETS.CALL);
+  const ctMap = new Map();
+  if (tCall.rows && tCall.rows.length){
+    // Определяем индексы A и B (на случай переименования шапки)
+    const head = tCall.header.map(h => String(h).trim().toLowerCase());
+    let iNum = head.indexOf('контакт.номер линии mango office');
+    let iTag = head.indexOf('r.источник тел сделки');
+    if (iNum === -1) iNum = 0;
+    if (iTag === -1) iTag = (tCall.header.length >= 2 ? 1 : 0);
+
+    tCall.rows.forEach(r=>{
+      const num = cleanPhoneDigits(r[iNum]);
+      const tag = normalizeCtTag(r[iTag]);
+      if (num && tag) ctMap.set(num, tag);
+    });
+  }
+
+  const out = new Array(n).fill('').map(()=>['']);
+  for (let i=0;i<n;i++){
+    const tag = findCalltrackingTag(ctMap, mangoC[i][0], mangoD[i][0]);
+    out[i][0] = tag || '';
+  }
+
+  // Только значения — формат не трогаем
+  sh.getRange(3, colOut, n, 1).setValues(out);
+}
+
+/**
+ * Обновляет ТОЛЬКО колонку "TIME" на листе «РАБОЧИЙ АМО».
+ * - Ищет колонку по заголовку во 2‑й строке ("TIME").
+ * - Для каждой строки берёт значение и приводит его к формату времени (hh:mm).
+ * - Если "TIME" пусто, но есть "Время прихода" — подставляет его.
+ * - Формат ячеек ставит 'hh:mm', оформления остальных колонок не трогает.
+ */
+function updateTimeOnlyOnWorking(){
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(CFG.SHEETS.OUT);
+  if (!sh) throw new Error('Нет листа "' + CFG.SHEETS.OUT + '"');
+
+  // Заголовки во 2-й строке
+  const header = sh.getRange(2,1,1,sh.getLastColumn()).getValues()[0].map(String);
+
+  const colTIME = header.indexOf('TIME') + 1;
+  if (colTIME <= 0) throw new Error('Не найдена колонка "TIME" во 2-й строке листа "' + CFG.SHEETS.OUT + '"');
+
+  // На случай резервного источника — колонка "Время прихода"
+  const colArrival = header.indexOf('Время прихода') + 1;
+
+  const lastRow = sh.getLastRow();
+  const n = Math.max(0, lastRow - 2);
+  if (n === 0) return;
+
+  const rngTime = sh.getRange(3, colTIME, n, 1);
+  const timeVals = rngTime.getValues();
+
+  let arrivalVals = null;
+  if (colArrival > 0) {
+    arrivalVals = sh.getRange(3, colArrival, n, 1).getValues();
+  }
+
+  // Преобразуем значения к времени
+  const out = new Array(n).fill(null).map(()=>['']);
+  for (let i=0;i<n;i++){
+    let v = timeVals[i][0];
+
+    // Если TIME пусто, пробуем подставить "Время прихода"
+    if ((v === '' || v == null) && arrivalVals) v = arrivalVals[i][0];
+
+    // Если дата/время — берём только время
+    if (v instanceof Date) {
+      // Создаём "чистое" время как долю суток
+      const t = new Date(v);
+      const ms = t.getHours()*3600000 + t.getMinutes()*60000 + t.getSeconds()*1000;
+      out[i][0] = ms / 86400000; // значение времени для гугл-таблиц
+      continue;
+    }
+
+    // Если строка — пробуем распарсить HH:MM(:SS)
+    const s = String(v||'').trim();
+    if (s) {
+      const m = s.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+      if (m) {
+        const h = Math.min(23, Number(m[1]));
+        const min = Math.min(59, Number(m[2]));
+        const sec = Math.min(59, Number(m[3]||'0'));
+        const ms = h*3600000 + min*60000 + sec*1000;
+        out[i][0] = ms / 86400000;
+        continue;
+      }
+    }
+
+    // Иначе оставляем пусто
+    out[i][0] = '';
+  }
+
+  // Записываем только значения и формат
+  rngTime.setValues(out).setNumberFormat('hh:mm');
+}
