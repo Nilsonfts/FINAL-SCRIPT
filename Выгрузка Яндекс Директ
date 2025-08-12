@@ -1,0 +1,247 @@
+/**********************
+ *  НАСТРОЙКИ
+ **********************/
+const SOURCE_SHEET_NAME = 'РАБОЧИЙ АМО';       // исходная выгрузка из amoCRM
+const OUT_SHEET_DIRECT  = 'direct_conversions'; // Таб для Я.Директа (как у тебя)
+const OUT_SHEET_SKIPPED = 'Skipped';
+const MOSCOW_TZ         = 'Europe/Moscow';
+
+// статусы, которые считаем «оплаченными»
+const PAID_STATUSES = new Set([
+  normalize('ОПЛАЧЕНО'),
+  normalize('Успешно в РП'),
+  normalize('Успешно реализовано')
+]);
+
+// алиасы заголовков (всё в нижнем регистре после normalize)
+const HEADER_ALIASES = {
+  ymClientId:  ['ym_client_id', 'ym client id', 'ym clientid', 'ym id', 'ymid'],
+  status:      ['статус'],
+  budget:      ['бюджет', 'сумма', 'сумма ₽', 'сумма руб', 'сумма р'],
+  closeDate:   ['дата закрытия', 'дата завершения'],
+  reserveDate: ['дата брони', 'дата резерва']
+};
+
+/**********************
+ *  ОСНОВНАЯ ФУНКЦИЯ
+ **********************/
+function buildDirectConversions() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // 1) берём источник
+  let src = ss.getSheetByName(SOURCE_SHEET_NAME);
+  if (!src) {
+    src = findSheetWithHeaders(ss);
+    if (!src) {
+      throw new Error('Не удалось найти лист с нужными заголовками. Проверь имя SOURCE_SHEET_NAME или названия столбцов.');
+    }
+  }
+
+  const all = src.getDataRange().getValues();
+  if (!all || all.length < 2) throw new Error('В исходном листе нет данных.');
+
+  // 2) ищем строку заголовков
+  const headerInfo = locateHeaderRow(all);
+  if (!headerInfo) {
+    throw new Error('Не найдены заголовки YM_CLIENT_ID/Статус/Бюджет/Дата закрытия (или Дата брони) в первых строках.');
+  }
+  const { headerRowIndex, indexes } = headerInfo;
+
+  // 3) готовим выходные листы
+  const outDirect  = prepareOutputSheet(ss, OUT_SHEET_DIRECT,  ['ClientId','ConversionName','ConversionValue','ConversionDateTime']);
+  const outSkipped = prepareOutputSheet(ss, OUT_SHEET_SKIPPED, ['Row','ClientId','Status','Budget','CloseDate','ReserveDate','Reason']);
+
+  const directRows  = [];
+  const skippedRows = [];
+
+  // 4) обрабатываем строки данных
+  for (let r = headerRowIndex + 1; r < all.length; r++) {
+    const row = all[r];
+
+    const ym          = getCell(row, indexes.ymClientId);
+    const status      = getCell(row, indexes.status);
+    const budgetNum   = getNumber(getCell(row, indexes.budget));
+    const closeDate   = getCell(row, indexes.closeDate);
+    const reserveDate = getCell(row, indexes.reserveDate);
+
+    const nStatus = normalize(status);
+
+    if (!PAID_STATUSES.has(nStatus)) {
+      skippedRows.push([r + 1, ym, status, budgetNum, closeDate, reserveDate, 'Статус не оплачен']);
+      continue;
+    }
+    if (!ym) {
+      skippedRows.push([r + 1, ym, status, budgetNum, closeDate, reserveDate, 'Пустой YM_CLIENT_ID']);
+      continue;
+    }
+
+    const value = isFinite(budgetNum) && budgetNum > 0 ? budgetNum : 0;
+    const dt    = coalesceDate(closeDate, reserveDate);
+    const dtStr = toDirectDate(dt); // ТЕКСТ 'yyyy-MM-dd HH:mm:ss' МСК
+
+    directRows.push([String(ym), 'OrderPaid', value, dtStr]);
+  }
+
+  // 5) запись результатов
+  writeRows(outDirect, directRows);
+  writeRows(outSkipped, skippedRows);
+
+  // 6) фиксируем форматы как текст там, где нужно
+  fixFormatsForDirect(outDirect);
+}
+
+/**********************
+ *  ВСПОМОГАТЕЛЬНЫЕ
+ **********************/
+
+function normalize(str) {
+  return String(str || '')
+    .toLowerCase()
+    .replace(/\u00A0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function findSheetWithHeaders(ss) {
+  const sheets = ss.getSheets();
+  for (const sh of sheets) {
+    const data = sh.getRange(1, 1, Math.min(sh.getMaxRows(), 10), Math.min(sh.getMaxColumns(), 100)).getValues();
+    const info = locateHeaderRow(data);
+    if (info) return sh;
+  }
+  return null;
+}
+
+function locateHeaderRow(values) {
+  const maxScan = Math.min(values.length, 5);
+  for (let r = 0; r < maxScan; r++) {
+    const row = values[r].map(v => String(v || ''));
+    const tryIdx = findHeaderIndexes(row);
+    if (tryIdx) return { headerRowIndex: r, indexes: tryIdx };
+  }
+  return null;
+}
+
+function findHeaderIndexes(headerRow) {
+  const normalized = headerRow.map(normalize);
+
+  function findOne(aliases) {
+    for (const alias of aliases) {
+      const i = normalized.indexOf(alias);
+      if (i !== -1) return i;
+    }
+    return -1;
+  }
+
+  const idx = {
+    ymClientId:  findOne(HEADER_ALIASES.ymClientId),
+    status:      findOne(HEADER_ALIASES.status),
+    budget:      findOne(HEADER_ALIASES.budget),
+    closeDate:   findOne(HEADER_ALIASES.closeDate),
+    reserveDate: findOne(HEADER_ALIASES.reserveDate)
+  };
+
+  const haveDates = (idx.closeDate !== -1) || (idx.reserveDate !== -1);
+  if (idx.ymClientId !== -1 && idx.status !== -1 && idx.budget !== -1 && haveDates) return idx;
+  return null;
+}
+
+function prepareOutputSheet(ss, name, header) {
+  const sh = ss.getSheetByName(name) || ss.insertSheet(name);
+  sh.clearContents();
+  if (header && header.length) sh.getRange(1, 1, 1, header.length).setValues([header]);
+  return sh;
+}
+
+function getCell(row, i) {
+  if (i === -1) return '';
+  return row[i] == null ? '' : String(row[i]);
+}
+
+function getNumber(v) {
+  const n = Number(String(v).replace(/[^\d.-]/g, ''));
+  return isFinite(n) ? n : 0;
+}
+
+function coalesceDate(closeDate, reserveDate) {
+  // Приоритет: Дата закрытия → Дата брони → сегодняшний 00:00:00 (МСК)
+  let d = parseDateLoose(closeDate);
+  if (!d) d = parseDateLoose(reserveDate);
+  if (!d) {
+    const today = Utilities.formatDate(new Date(), MOSCOW_TZ, 'yyyy-MM-dd') + ' 00:00:00';
+    return new Date(today);
+  }
+  const ymd = Utilities.formatDate(d, MOSCOW_TZ, 'yyyy-MM-dd') + ' 00:00:00';
+  return new Date(ymd);
+}
+
+function parseDateLoose(val) {
+  if (!val) return null;
+  if (Object.prototype.toString.call(val) === '[object Date]' && !isNaN(val)) return val;
+
+  const s = String(val).trim();
+  if (!s) return null;
+
+  const d1 = new Date(s);
+  if (!isNaN(d1)) return d1;
+
+  const m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/); // dd.MM.yyyy
+  if (m) {
+    const [_, dd, mm, yyyy] = m;
+    return new Date(`${yyyy}-${pad(mm)}-${pad(dd)} 00:00:00`);
+  }
+  return null;
+}
+
+function pad(n) {
+  return (n + '').padStart(2, '0');
+}
+
+function toDirectDate(d) {
+  // возвращаем СТРОКУ нужного формата
+  return Utilities.formatDate(d, MOSCOW_TZ, 'yyyy-MM-dd HH:mm:ss');
+}
+
+function writeRows(sh, rows) {
+  if (!rows || rows.length === 0) return;
+  sh.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
+}
+
+// фиксируем формат столбцов для Я.Директа (текст)
+function fixFormatsForDirect(sh) {
+  const lastRow = sh.getLastRow();
+  const lastCol = sh.getLastColumn();
+  if (lastRow < 2 || lastCol < 4) return;
+
+  // A: ClientId — текст
+  sh.getRange(2, 1, lastRow - 1, 1).setNumberFormat('@');
+  // D: ConversionDateTime — текст
+  sh.getRange(2, 4, lastRow - 1, 1).setNumberFormat('@');
+}
+
+/**********************
+ *  ТРИГГЕРЫ / МЕНЮ
+ **********************/
+function createDailyTrigger() {
+  // Сносим старые триггеры именно для этой функции
+  ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === 'buildDirectConversions')
+    .forEach(t => ScriptApp.deleteTrigger(t));
+
+  // Создаём новый — ежедневно в 06:00 МСК
+  ScriptApp.newTrigger('buildDirectConversions')
+    .timeBased()
+    .everyDays(1)
+    .atHour(6)
+    .inTimezone(MOSCOW_TZ)
+    .create();
+}
+
+// Удобное меню
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu('Direct Export')
+    .addItem('Сформировать файл для Я.Директа', 'buildDirectConversions')
+    .addItem('Создать триггер (ежедневно 06:00 МСК)', 'createDailyTrigger')
+    .addToUi();
+}
