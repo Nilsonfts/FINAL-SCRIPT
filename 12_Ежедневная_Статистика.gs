@@ -796,19 +796,18 @@ function addDailyStatisticsCharts_(sheet, dailyData) {
     );
     
     if (revenueChartData.length > 1) {
-      const revenueChart = sheet.insertChart(
-        // Создаем диаграмму через универсальную функцию
-        const revenueChart = createChart_(sheet, 'column', revenueChartData, {
-          startRow: 1,
-          startCol: 20,
-          title: 'Ежедневная выручка',
-          position: { row: 25, col: 18 },
-          width: 600,
-          height: 350,
-          legend: 'none',
-          hAxisTitle: 'Дата',
-          vAxisTitle: 'Выручка, руб.'
-        });
+      // Создаем диаграмму через универсальную функцию
+      const revenueChart = createChart_(sheet, 'column', revenueChartData, {
+        startRow: 1,
+        startCol: 20,
+        title: 'Ежедневная выручка',
+        position: { row: 25, col: 18 },
+        width: 600,
+        height: 350,
+        legend: 'none',
+        hAxisTitle: 'Дата',
+        vAxisTitle: 'Выручка, руб.'
+      });
     }
   }
 }
