@@ -1,0 +1,243 @@
+/**
+ * «АНАЛИТИКА ЛИДОВ ПО КАНАЛАМ» — отдельный красивый отчёт с:
+ *  • общей статистикой,
+ *  • топом каналов по доходу,
+ *  • круговой диаграммой «Распределение дохода по каналам»,
+ *  • помесячной разбивкой дохода по каналам (стопка/группа столбцов).
+ * Шрифт: PT Sans. Ничего не ломаем в других листах.
+ */
+
+const LPC_CFG = {
+  SHEET: 'АНАЛИТИКА ЛИДОВ ПО КАНАЛАМ',
+  FONT: 'PT Sans'
+};
+
+function buildLeadsPerChannelReport(){
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // Пробуем взять готовые агрегации из твоего Marketing Analytics
+  let aggr = null;
+  try{ if (typeof aggregateForRomi_ === 'function') aggr = aggregateForRomi_(); }catch(e){}
+  if (!aggr){ aggr = aggregateFromRA_(); } // fallback: считаем помесячно сами
+
+  // Сводные по каналам (лиды/оплаты/доход/ср.чек/конверсия)
+  const chanRows = (aggr.chanTable||[]).map(r=>({
+    channel: String(r[0]||''),
+    leads: Number(r[2]||0),
+    paid: Number(r[3]||0),
+    revenue: Number(r[4]||0),
+    avg: (Number(r[3]||0)>0? Number(r[4]||0)/Number(r[3]||0):0),
+    conv: (Number(r[2]||0)>0? Number(r[3]||0)/Number(r[2]||0):0)
+  }));
+
+  // Общая статистика
+  const totalLeads = chanRows.reduce((s,x)=>s+x.leads,0);
+  const totalPaid  = chanRows.reduce((s,x)=>s+x.paid,0);
+  const totalRev   = chanRows.reduce((s,x)=>s+x.revenue,0);
+  const avgCheck   = (totalPaid>0? totalRev/totalPaid : 0);
+  const convTotal  = (totalLeads>0? totalPaid/totalLeads : 0);
+
+  // Топ каналов по доходу (отсортируем по revenue)
+  chanRows.sort((a,b)=>b.revenue-a.revenue);
+
+  // --- РЕНДЕР ---
+  const sh = ss.getSheetByName(LPC_CFG.SHEET) || ss.insertSheet(LPC_CFG.SHEET);
+  sh.clear();
+
+  // Заголовок-баннер
+  const banner = sh.getRange(1,1,1,7); try{ banner.merge(); }catch(e){}
+  banner.setValue('📊 АНАЛИТИКА ЛИДОВ ПО КАНАЛАМ')
+        .setFontFamily(LPC_CFG.FONT).setFontWeight('bold').setFontSize(18)
+        .setHorizontalAlignment('center').setVerticalAlignment('middle')
+        .setBackground('#CFE8FF');
+  try{ banner.setBorder(null,null,true,null,false,false,'#4A90E2',SpreadsheetApp.BorderStyle.SOLID);}catch(e){}
+
+  // Последнее обновление
+  sh.getRange(2,1).setValue('⏱ Последнее обновлёние:')
+    .setFontFamily(LPC_CFG.FONT).setFontWeight('bold');
+  sh.getRange(2,2).setValue(new Date()).setNumberFormat('dd.mm.yyyy, HH:mm:ss').setFontFamily(LPC_CFG.FONT);
+
+  // Блок «Общая статистика» (зелёная полоса)
+  sectionTitle_(sh, 3, 1, '✅ ОБЩАЯ СТАТИСТИКА', 7, '#E6FFE6', LPC_CFG.FONT);
+  const genHead = ['Показатель','Значение'];
+  const genData = [
+    ['Всего лидов', totalLeads],
+    ['Лидов с оплатой', totalPaid],
+    ['Общий доход ₽', totalRev],
+    ['Средний чек ₽', avgCheck],
+    ['Конверсия в оплату', convTotal]
+  ];
+  sh.getRange(4,1,1,2).setValues([genHead]).setFontWeight('bold').setFontFamily(LPC_CFG.FONT).setBackground('#E6F7FF');
+  sh.getRange(5,1,genData.length,2).setValues(genData).setFontFamily(LPC_CFG.FONT);
+  sh.getRange(5,2,genData.length,1).setNumberFormat('@');
+  // Форматы чисел
+  sh.getRange(5,2,3,1).setNumberFormat('#,##0'); // лиды/оплаты/доход
+  sh.getRange(8,2,1,1).setNumberFormat('#,##0.00'); // ср чек
+  sh.getRange(9,2,1,1).setNumberFormat('0.0%'); // конверсия
+  applyTableFrame_(sh.getRange(4,1,1+genData.length,2), LPC_CFG.FONT);
+
+  // Блок «ТОП КАНАЛОВ ПО ДОХОДУ» (красная полоса)
+  const startTop = 11;
+  sectionTitle_(sh, startTop, 1, '🏆 ТОП КАНАЛОВ ПО ДОХОДУ', 7, '#FFE6E6', LPC_CFG.FONT);
+  const headTop = ['Канал','Лидов','С оплатой','Доход ₽','Ср. чек ₽','Конверсия','% от общего'];
+  sh.getRange(startTop+1,1,1,headTop.length).setValues([headTop]).setFontFamily(LPC_CFG.FONT).setFontWeight('bold').setBackground('#E6F7FF');
+  const rowsTop = chanRows.map(x=>[
+    x.channel, x.leads, x.paid, x.revenue, x.avg, x.conv, (totalRev>0? x.revenue/totalRev:0)
+  ]);
+  const nTop = Math.max(1, rowsTop.length);
+  if (rowsTop.length) sh.getRange(startTop+2,1,rowsTop.length,headTop.length).setValues(rowsTop).setFontFamily(LPC_CFG.FONT);
+  // Форматы
+  sh.getRange(startTop+2,2,nTop,2).setNumberFormat('#,##0'); // лиды/оплаты
+  sh.getRange(startTop+2,4,nTop,2).setNumberFormat('#,##0'); // доход/ср чек
+  sh.getRange(startTop+2,6,nTop,2).setNumberFormat('0.0%'); // конверсия/доля
+  applyZebra_(sh.getRange(startTop+1,1,nTop+1,headTop.length));
+  applyTableFrame_(sh.getRange(startTop+1,1,nTop+1,headTop.length), LPC_CFG.FONT);
+
+  // Подготовим данные для графиков (справа)
+  const chartCol = 9; // I
+  const pieData = [['Канал','Доход ₽']].concat(chanRows.map(x=>[x.channel,x.revenue]));
+  sh.getRange(3, chartCol, pieData.length, 2).setValues(pieData).setFontFamily(LPC_CFG.FONT);
+
+  // Помесячная матрица дохода по каналам
+  const monthly = aggregateMonthlyRevenue_(aggr); // {months[], channels[], rows: [[m,ch,rev], ...]}
+  const gridHead = ['Месяц', ...monthly.channels];
+  const grid = monthly.months.map(m=>{
+    const line=[monthLabelRu_(m)];
+    monthly.channels.forEach(ch=>{ line.push(monthly.value(m,ch)); });
+    return line;
+  });
+  const gridStart = 3 + pieData.length + 2;
+  sh.getRange(gridStart, chartCol, 1, gridHead.length).setValues([gridHead]).setFontFamily(LPC_CFG.FONT).setFontWeight('bold').setBackground('#E6F7FF');
+  if (grid.length) sh.getRange(gridStart+1, chartCol, grid.length, gridHead.length).setValues(grid).setFontFamily(LPC_CFG.FONT);
+  applyZebra_(sh.getRange(gridStart, chartCol, Math.max(1,grid.length+1), gridHead.length));
+  applyTableFrame_(sh.getRange(gridStart, chartCol, Math.max(1,grid.length+1), gridHead.length), LPC_CFG.FONT);
+
+  SpreadsheetApp.flush();
+
+  // --- Диаграммы ---
+  // Удалим старые
+  try{ sh.getCharts().forEach(c=>sh.removeChart(c)); }catch(e){}
+
+  // Pie: распределение дохода по каналам
+  const pie = sh.newChart().setChartType(Charts.ChartType.PIE)
+    .addRange(sh.getRange(3, chartCol, pieData.length, 2))
+    .setOption('title','Распределение дохода по каналам')
+    .setOption('legend.position','right')
+    .setOption('pieHole',0)
+    .setOption('sliceVisibilityThreshold',0)
+    .setOption('titleTextStyle',{fontSize:14,bold:true,fontName:LPC_CFG.FONT})
+    .setOption('legend.textStyle',{fontSize:11,fontName:LPC_CFG.FONT})
+    .setOption('chartArea',{left:40, top:40, width:'85%', height:'80%'})
+    .setPosition(3, 12, 0, 0)
+    .build();
+  sh.insertChart(pie);
+
+  // Stacked column: доход по месяцам и каналам
+  if (grid.length && gridHead.length>1){
+    const col = sh.newChart().setChartType(Charts.ChartType.COLUMN)
+      .addRange(sh.getRange(gridStart, chartCol, grid.length+1, gridHead.length))
+      .setOption('isStacked', true)
+      .setOption('title','Доход по месяцам по каналам')
+      .setOption('legend.position','top')
+      .setOption('titleTextStyle',{fontSize:14,bold:true,fontName:LPC_CFG.FONT})
+      .setOption('hAxis',{ slantedText:true, slantedTextAngle:20, textStyle:{fontSize:11,fontName:LPC_CFG.FONT}})
+      .setOption('vAxis',{ textStyle:{fontSize:11,fontName:LPC_CFG.FONT}})
+      .setOption('chartArea',{left:40, top:40, width:'85%', height:'60%'})
+      .setPosition(20, 12, 0, 0)
+      .build();
+    sh.insertChart(col);
+  }
+}
+
+/** ===== Вспомогательные агрегации ===== */
+function aggregateFromRA_(){
+  // Минимальный пересчёт, если нет aggregateForRomi_()
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ra = (typeof readRA_==='function')? readRA_(ss) : readRA2_(ss);
+  const dir = (typeof readDirectory_==='function')? readDirectory_(ss) : readDirectory2_(ss);
+  const PAID_RE = /(оплач|успеш|реализ)/i;
+
+  const byChan = new Map(); // ch -> {leads, paid, revenue}
+  const byMonChan = new Map(); // 'YYYY-MM' -> Map(ch->{revenue})
+  const iStatus = ra.idx.status, iSum=ra.idx.sum, iBudget=ra.idx.budget, iCreated=ra.idx.created, iTelTag=ra.idx.telTag;
+  const ilines = ra.idx.lines || [];
+
+  ra.rows.forEach(r=>{
+    // канал
+    let tag='', ch='';
+    if (iTelTag>-1) tag = cleanTag_(r[iTelTag]);
+    if (!tag && ilines.length){
+      for (let k=0;k<ilines.length;k++){
+        const num = pickOneNumber_(r[ilines[k]]); if (!num) continue; const rec = dir.byNumber.get(num); if (rec){ tag=rec.tag; ch=rec.channel; break; }
+      }
+    }
+    if (!ch && tag) ch = dir.tag2channel.get(tag) || '';
+    ch = normalizeChannel_(ch||'Other');
+
+    // статус/сумма
+    const paid = PAID_RE.test(String(iStatus>-1? r[iStatus]:''));
+    let amount = toNumber_(iSum>-1 ? r[iSum] : 0);
+    if (paid && amount<=0 && iBudget>-1) amount = toNumber_(r[iBudget]);
+
+    // по каналу
+    const c = byChan.get(ch) || {leads:0, paid:0, revenue:0};
+    c.leads++; if (paid){ c.paid++; if (amount>0) c.revenue += amount; }
+    byChan.set(ch, c);
+
+    // по месяцу
+    const m = monthKey_(iCreated>-1? r[iCreated] : ''); if (m){
+      const map = byMonChan.get(m) || new Map();
+      const cell = map.get(ch) || {revenue:0};
+      if (paid && amount>0) cell.revenue += amount;
+      map.set(ch, cell); byMonChan.set(m, map);
+    }
+  });
+
+  const chanTable=[]; byChan.forEach((v,ch)=>{ const avg=(v.paid? v.revenue/v.paid:0), conv=(v.leads? v.paid/v.leads:0); chanTable.push([ch, '', v.leads, v.paid, v.revenue, avg, conv]); });
+
+  const monthlyFlat=[]; byMonChan.forEach((m,chMap)=>{ chMap.forEach((v,ch)=>{ monthlyFlat.push([m,ch,(byChan.get(ch)||{leads:0}).leads,(byChan.get(ch)||{paid:0}).paid,v.revenue, ( (byChan.get(ch)||{paid:0,revenue:0}).paid ? (byChan.get(ch).revenue/byChan.get(ch).paid) : 0 ), 0]); }); });
+  const channelsList=[...byChan.keys()].sort();
+  return { chanTable, monthlyFlat, channelsList };
+}
+
+function aggregateMonthlyRevenue_(aggr){
+  const rows = aggr.monthlyFlat || [];
+  const monthsSet = new Set();
+  const chanSet = new Set(aggr.channelsList||[]);
+  const map = new Map(); // key m\tch -> revenue
+  rows.forEach(r=>{ const m=r[0], ch=r[1], rev=Number(r[4]||0); monthsSet.add(m); chanSet.add(ch); map.set(m+'\t'+ch, (map.get(m+'\t'+ch)||0)+rev); });
+  const months = [...monthsSet].sort();
+  const channels = [...chanSet].sort();
+  return {
+    months, channels,
+    value: (m,ch)=> Number(map.get(m+'\t'+ch) || 0)
+  };
+}
+
+/** ===== Стили ===== */
+function sectionTitle_(sh, row, col, text, width, bg, font){
+  const w=Math.max(1,width||6); const rng=sh.getRange(row,col,1,w); try{rng.merge();}catch(e){}
+  rng.setValue(String(text||''))
+     .setFontFamily(font||'PT Sans')
+     .setFontSize(13).setFontWeight('bold')
+     .setHorizontalAlignment('left').setBackground(bg||'#E6F7FF');
+  try{ rng.setBorder(null,null,true,null,false,false,'#4A90E2',SpreadsheetApp.BorderStyle.SOLID);}catch(e){}
+}
+function applyTableFrame_(rng, font){
+  const sh=rng.getSheet(); const r=rng.getRow(), c=rng.getColumn(), nr=rng.getNumRows(), nc=rng.getNumColumns();
+  rng.setFontFamily(font||'PT Sans');
+  rng.setBorder(false,false,false,false,false,false);
+  // Внешняя тонкая рамка
+  sh.getRange(r, c, 1, nc).setBorder(true,true,true,true,false,false,'#666666',SpreadsheetApp.BorderStyle.SOLID);
+  sh.getRange(r+nr-1, c, 1, nc).setBorder(true,true,true,true,false,false,'#666666',SpreadsheetApp.BorderStyle.SOLID);
+  sh.getRange(r, c, nr, 1).setBorder(true,true,true,true,false,false,'#666666',SpreadsheetApp.BorderStyle.SOLID);
+  sh.getRange(r, c+nc-1, nr, 1).setBorder(true,true,true,true,false,false,'#666666',SpreadsheetApp.BorderStyle.SOLID);
+  // Пунктирная внутренняя сетка
+  rng.setBorder(true,true,true,true,true,true,'#9E9E9E',SpreadsheetApp.BorderStyle.DOTTED);
+}
+function applyZebra_(rng){
+  const sh=rng.getSheet(); const nr=rng.getNumRows(), nc=rng.getNumColumns();
+  const dataRows = Math.max(0, nr-1);
+  const odd='#F8FCFF', even='#FFFFFF';
+  if (dataRows>0){ const dr=sh.getRange(rng.getRow()+1, rng.getColumn(), dataRows, nc); const bgs=[]; for(let i=0;i<dataRows;i++){ bgs.push(Array.from({length:nc},()=> (i%2===0?odd:even))); } dr.setBackgrounds(bgs); }
+}
