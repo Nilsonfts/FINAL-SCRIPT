@@ -1,0 +1,369 @@
+/******************************************************
+ * ТОП-40 КЛИЕНТОВ (сумма/визиты только из Guests RP)
+ * - Сумма  = Guests RP, столбец «Общая сумма»
+ * - Визитов= Guests RP, столбец «Кол-во визитов»
+ * - Когда был = «Последний визит» (Guests RP)
+ * - Канал/Менеджер/ID/Гостей = последняя успешная сделка из «РАБОЧИЙ АМО»
+ ******************************************************/
+
+const TOP40G_CFG = {
+  GUESTS_SHEET: 'Guests RP',           // ищем «приблизительно»
+  RA_SHEET:     'РАБОЧИЙ АМО',
+  OUT_SHEET:    'ТОП-40 КЛИЕНТОВ',
+  FONT:         'PT Sans',
+  TITLE_BG:     '#FFE97F',
+  HEADER_BG:    '#E9F2FB',
+  ZEBRA1:       '#FFFFFF',
+  ZEBRA2:       '#F8FCFF',
+  SUCCESS_RE:   [/оплач/i, /успеш.*в\s*рп/i, /успеш.*реализ/i],
+  // валидные названия заголовков (любое вхождение)
+  G_HEADERS: {
+    name:   ['имя','name'],
+    phone:  ['телефон','phone'],
+    visits: ['кол-во визитов','количество визитов','визитов','кол-во посещ'],
+    sum:    ['общая сумма','сумма всего','итого по гостю'],
+    first:  ['первый визит'],
+    last:   ['последний визит']
+  }
+};
+
+/* ==================== MAIN ==================== */
+function buildTop40ClientsFromGuests(){
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // ----- Guests RP: телефон -> {name, visits, sum, first, last}
+  const guests = readGuestsFlexible_(ss);
+  if (!guests.size) throw new Error('Guests RP пуст или не найден.');
+
+  // ----- АМО: последняя успешная сделка по телефону
+  const amo = readAmoLastSuccessByPhone_(ss);
+
+  // ----- собрать клиентов
+  const list = [];
+  for (const [phone, g] of guests.entries()){
+    const a = amo.get(phone) || {};
+    list.push({
+      name:   g.name || a.fio || phone,
+      phone,
+      visits: g.visits,
+      total:  g.sum,
+      when:   g.last || a.when || '',
+      chan:   a.chan || 'direct_site',
+      mgr:    a.manager || '',
+      guests: a.guests || '',
+      id:     a.id || ''
+    });
+  }
+
+  // ----- ТОП-40 по сумме (Guests RP)
+  const top = list
+    .filter(x => Number(x.total) > 0)
+    .sort((a,b)=>b.total - a.total)
+    .slice(0,40);
+
+  // ----- вывод
+  const sh = ss.getSheetByName(TOP40G_CFG.OUT_SHEET) || ss.insertSheet(TOP40G_CFG.OUT_SHEET);
+  sh.clear();
+  sh.setFrozenRows(2);
+
+  // Заголовок
+  sh.getRange(1,1,1,10).merge()
+    .setValue('💎 ТОП-40 КЛИЕНТОВ — по сумме выручки (Guests RP)')
+    .setFontFamily(TOP40G_CFG.FONT).setFontSize(18).setFontWeight('bold')
+    .setHorizontalAlignment('left').setVerticalAlignment('middle')
+    .setBackground(TOP40G_CFG.TITLE_BG);
+
+  // Таблица
+  const header = ['#','Клиент','Телефон','Визитов','Гостей','ID сделки','Сумма ₽','Когда был','Как зашёл (канал)','Менеджер'];
+  const start = 3;
+  sh.getRange(start,1,1,header.length).setValues([header])
+    .setFontWeight('bold').setBackground(TOP40G_CFG.HEADER_BG);
+
+  let body = [];
+  if (top.length){
+    body = top.map((x,i)=>[
+      i+1,
+      x.name,
+      x.phone,
+      x.visits,
+      x.guests===''?'':x.guests,
+      x.id,
+      x.total,
+      x.when,
+      x.chan,
+      x.mgr
+    ]);
+    sh.getRange(start+1,1,body.length,header.length).setValues(body);
+  } else {
+    sh.getRange(start+1,1,1,header.length).setValues([new Array(header.length).fill('')]);
+  }
+
+  // Форматы и красота
+  const n = Math.max(1, body.length);
+  const bodyRange = sh.getRange(start+1,1,n,header.length);
+  bodyRange.setFontFamily(TOP40G_CFG.FONT);
+  sh.getRange(1,1,Math.max(3,n+2),header.length).setFontFamily(TOP40G_CFG.FONT);
+
+  // Зебра
+  if (body.length){
+    const bgs = [];
+    for (let r=0;r<body.length;r++){
+      const color = (r%2===0) ? TOP40G_CFG.ZEBRA1 : TOP40G_CFG.ZEBRA2;
+      bgs.push(new Array(header.length).fill(color));
+    }
+    bodyRange.setBackgrounds(bgs);
+  }
+
+  // Числовые форматы
+  if (n>0){
+    sh.getRange(start+1,1,n,1).setNumberFormat('0');            // #
+    sh.getRange(start+1,3,n,1).setNumberFormat('@');            // телефон как текст
+    sh.getRange(start+1,4,n,1).setNumberFormat('0');            // визитов
+    sh.getRange(start+1,5,n,1).setNumberFormat('0');            // гостей
+    sh.getRange(start+1,6,n,1).setNumberFormat('@');            // ID
+    sh.getRange(start+1,7,n,1).setNumberFormat('# ##0');        // сумма
+    sh.getRange(start+1,8,n,1).setNumberFormat('dd.MM.yyyy');   // когда был
+    // выравнивания
+    sh.getRange(start+1,4,n,2).setHorizontalAlignment('center');
+    sh.getRange(start+1,7,n,1).setHorizontalAlignment('right');
+  }
+
+  // Подсветим ТОП-10
+  const top10 = Math.min(10, body.length);
+  if (top10>0) sh.getRange(start+1,1,top10,header.length).setBackground('#FFF7D6');
+
+  // Границы
+  sh.getRange(start,1,Math.max(1,n+1),header.length)
+    .setBorder(true,true,true,true,true,true);
+
+  // Компактные ширины столбцов (чтобы не «растягивало»)
+  // B (клиент), C(телефон), D/E (числа), F(ID), G(сумма), H(дата), I(канал), J(менеджер)
+  try{
+    sh.setColumnWidths(1, 1, 36);     // #
+    sh.setColumnWidths(2, 1, 180);    // Клиент
+    sh.setColumnWidths(3, 1, 110);    // Телефон
+    sh.setColumnWidths(4, 1, 70);     // Визитов
+    sh.setColumnWidths(5, 1, 70);     // Гостей
+    sh.setColumnWidths(6, 1, 110);    // ID сделки
+    sh.setColumnWidths(7, 1, 110);    // Сумма
+    sh.setColumnWidths(8, 1, 110);    // Когда был
+    sh.setColumnWidths(9, 1, 130);    // Канал
+    sh.setColumnWidths(10,1, 180);    // Менеджер
+  }catch(e){}
+
+  // Строим компактный график (ТОП-15 по сумме)
+  try {
+    // удалим старые
+    sh.getCharts().forEach(ch => sh.removeChart(ch));
+    const count = Math.min(15, body.length);
+    if (count > 0){
+      const chart = sh.newChart()
+        .setChartType(Charts.ChartType.COLUMN)
+        .addRange(sh.getRange(start,2, count+1, 1))  // имена (B)
+        .addRange(sh.getRange(start,7, count+1, 1))  // сумма (G)
+        .setOption('title', 'ТОП-15 гостей по сумме (Guests RP)')
+        .setOption('legend', { position: 'none' })
+        .setOption('hAxis', { slantedText: true, slantedTextAngle: 20 })
+        .setOption('chartArea', { left: 40, top: 40, width: '85%', height: '60%' })
+        .setPosition(3, 12, 0, 0) // поставить правее таблицы (примерно с колонки L)
+        .build();
+      sh.insertChart(chart);
+    }
+  } catch(e) {}
+
+}
+
+/* ======= OPTIONAL: hourly trigger ======= */
+function setHourlyTrigger_Top40Guests(){
+  ScriptApp.getProjectTriggers()
+    .filter(t=>t.getHandlerFunction()==='buildTop40ClientsFromGuests')
+    .forEach(t=>ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('buildTop40ClientsFromGuests').timeBased().everyHours(1).create();
+}
+
+/* ================== HELPERS ================== */
+
+// найти лист по «приблизительному» совпадению названия
+function findSheetApprox_(ss, target){
+  const want = String(target).toLowerCase().replace(/\s+/g,'');
+  let sh = ss.getSheetByName(target);
+  if (sh) return sh;
+  for (const s of ss.getSheets()){
+    const nm = s.getName().toLowerCase().replace(/\s+/g,'');
+    if (nm.includes(want)) return s;
+  }
+  return null;
+}
+
+// читаем Guests RP гибко: шапка в первых 5 строках, вариативные заголовки
+function readGuestsFlexible_(ss){
+  const sh = findSheetApprox_(ss, TOP40G_CFG.GUESTS_SHEET);
+  if (!sh) return new Map();
+
+  const vals = sh.getDataRange().getValues();
+  if (!vals.length) return new Map();
+
+  const headerRow = detectHeaderRow_(vals, TOP40G_CFG.G_HEADERS) ?? 0;
+  const header = (vals[headerRow]||[]).map(String);
+  const rows = vals.slice(headerRow+1).filter(r=>r.some(x=>String(x).trim()!==''));
+
+  const idx = {
+    name:   findSmartIdx_(header, TOP40G_CFG.G_HEADERS.name),
+    phone:  findSmartIdx_(header, TOP40G_CFG.G_HEADERS.phone),
+    visits: findSmartIdx_(header, TOP40G_CFG.G_HEADERS.visits),
+    sum:    findSmartIdx_(header, TOP40G_CFG.G_HEADERS.sum),
+    first:  findSmartIdx_(header, TOP40G_CFG.G_HEADERS.first),
+    last:   findSmartIdx_(header, TOP40G_CFG.G_HEADERS.last)
+  };
+
+  if (idx.phone<0 || idx.sum<0 || idx.visits<0) return new Map();
+
+  const map = new Map();
+  rows.forEach(r=>{
+    const ph = cleanPhone_(r[idx.phone]);
+    if (!ph) return;
+    const name   = safeStr_(r[idx.name]);
+    const visits = toInt_(r[idx.visits]);
+    const sum    = money_(r[idx.sum]);
+    const first  = idx.first>=0 ? r[idx.first] : '';
+    const last   = idx.last>=0  ? r[idx.last]  : '';
+    const cur = map.get(ph);
+    if (!cur || (sum > cur.sum)){
+      map.set(ph, {name, visits, sum, first, last});
+    }
+  });
+  return map;
+}
+
+// определить строку шапки (в первых 5 строках) по наличию ключевых полей
+function detectHeaderRow_(vals, keys){
+  const MAX = Math.min(5, vals.length);
+  for (let r=0; r<MAX; r++){
+    const row = (vals[r]||[]).map(String);
+    const hasPhone  = findSmartIdx_(row, keys.phone)  >= 0;
+    const hasSum    = findSmartIdx_(row, keys.sum)    >= 0;
+    const hasVisits = findSmartIdx_(row, keys.visits) >= 0;
+    if (hasPhone && hasSum && hasVisits) return r;
+  }
+  return null;
+}
+
+// «умный» поиск индекса заголовка
+function findSmartIdx_(header, variants){
+  const norm = header.map(h=>normHeader_(h));
+  for (const v of variants){
+    const key = normHeader_(v);
+    let i = norm.indexOf(key);
+    if (i>-1) return i;
+    i = norm.findIndex(h => h.includes(key) || key.includes(h));
+    if (i>-1) return i;
+  }
+  return -1;
+}
+function normHeader_(s){
+  return String(s||'')
+    .toLowerCase()
+    .replace(/[₽,.;:()|]/g,' ')
+    .replace(/[-–—]/g,' ')
+    .replace(/\s+/g,' ')
+    .trim();
+}
+
+// читаем АМО: последняя успешная сделка на телефон
+function readAmoLastSuccessByPhone_(ss){
+  const sh = ss.getSheetByName(TOP40G_CFG.RA_SHEET);
+  if (!sh) return new Map();
+  const {header, rows} = readTable_(sh);
+
+  const i = {
+    status:  findIdx_(header, ['Статус','Сделка.Статус']),
+    phone:   findIdx_(header, ['Телефон','Контакт.Телефон','Phone']),
+    id:      findIdx_(header, ['ID','Сделка.ID']),
+    guests:  findIdx_(header, ['Кол-во гостей','Сделка.Кол-во гостей']),
+    manager: findIdx_(header, ['Ответственный','Сделка.Ответственный']),
+    telTag:  findIdx_(header, ['R.Источник ТЕЛ сделки','R.Источник ТЕЛ']),
+    utm:     findIdx_(header, ['UTM_SOURCE','utm_source']),
+    last:    findIdx_(header, ['Последний визит']),
+    book:    findIdx_(header, ['Дата брони']),
+    created: findIdx_(header, ['Дата создания','DATE'])
+  };
+
+  const map = new Map();
+  rows.forEach(r=>{
+    const st = String(r[i.status]||'');
+    const ok = TOP40G_CFG.SUCCESS_RE.some(re=>re.test(st));
+    if (!ok) return;
+
+    const phone = cleanPhone_(r[i.phone]);
+    if (!phone) return;
+
+    const when = r[i.last] || r[i.book] || r[i.created] || '';
+    const chan = normalizeChan_(String(r[i.telTag]||''), String(r[i.utm]||''));
+    const mgr  = String(r[i.manager]||'').trim();
+    const guests = toInt_(r[i.guests]);
+    const id   = (r[i.id]==null)?'':String(r[i.id]).trim();
+
+    const cur = map.get(phone);
+    if (!cur || toTs_(when) > toTs_(cur.when)){
+      map.set(phone, {when, chan, manager: mgr, guests, id, fio: ''});
+    }
+  });
+  return map;
+}
+
+/* ---- generic table read ---- */
+function readTable_(sh){
+  const vals = sh.getDataRange().getValues();
+  if (!vals.length) return {header:[], rows:[]};
+  const headerRow = (vals[1] && vals[1].some(v=>String(v).trim()!==''))
+    ? 1 : 0; // у АМО шапка обычно во 2-й строке
+  const header = (vals[headerRow]||[]).map(String);
+  const rows = vals.slice(headerRow+1).filter(r=>r.some(x=>String(x).trim()!==''));
+  return {header, rows};
+}
+
+/* ---- header find helpers ---- */
+function normStr_(s){ return String(s||'').trim().toLowerCase().replace(/\s+/g,' '); }
+function findIdx_(header, variants){
+  const norm = header.map(h=>normStr_(h));
+  for (const v of variants){
+    const key = normStr_(v);
+    let i = norm.indexOf(key);
+    if (i>-1) return i;
+    i = norm.findIndex(h => h===key || h.includes(key));
+    if (i>-1) return i;
+  }
+  return -1;
+}
+
+/* ---- parsing helpers ---- */
+function safeStr_(v){ return String(v==null?'':v).trim(); }
+function cleanPhone_(v){
+  const d = String(v||'').replace(/\D/g,'');
+  if (!d) return '';
+  if (d.length===11 && /^[78]/.test(d)) return d.slice(1);
+  if (d.length>=10) return d.slice(-10);
+  return d;
+}
+function toInt_(v){
+  const n = parseInt(String(v||'').replace(/\s/g,''),10);
+  return isNaN(n) ? '' : n;
+}
+function money_(v){
+  const s = String(v||'').replace(/[^\d,.\-]/g,'').replace(/,/g,'.');
+  const n = Number(s);
+  return isNaN(n) ? 0 : n;
+}
+function toTs_(v){
+  if (!v) return 0;
+  if (v instanceof Date) return v.getTime();
+  const t = Date.parse(String(v));
+  return isNaN(t) ? 0 : t;
+}
+function normalizeChan_(telTag, utm){
+  let c = (telTag || '').trim() || (utm || '').trim();
+  const s = c.toLowerCase();
+  if (s === 'ya_map#booking') c = 'ya_map';
+  if (!c) c = 'direct_site';
+  return c;
+}
