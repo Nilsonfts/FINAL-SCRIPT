@@ -19,13 +19,27 @@ const CONFIG = {
     SUCCESS_LIGHT: '#d4edda',
     ERROR_LIGHT: '#f8d7da',
     WARNING_LIGHT: '#fff3cd',
-    DATA_BG: '#ffffff'
+    DATA_BG: '#ffffff',
+    
+    // Для совместимости с утилитами заголовков
+    backgrounds: {
+      header: '#4285f4'
+    }
   },
   
   // ===== УВЕДОМЛЕНИЯ EMAIL =====
   EMAIL_NOTIFICATIONS: {
     RECIPIENTS: [] // Добавьте email адреса при необходимости
   },
+  
+  // ===== НАСТРОЙКИ ОТЛАДКИ =====
+  DEBUG: {
+    enabled: true,
+    log_level: 'INFO' // DEBUG, INFO, WARNING, ERROR
+  },
+  
+  // ===== НАСТРОЙКИ ШРИФТОВ И ФОРМАТИРОВАНИЯ =====
+  DEFAULT_FONT: 'PT Sans',
   
   // ===== ГЛОБАЛЬНЫЕ НАСТРОЙКИ ДАННЫХ =====
   RAW_DATA: 'РАБОЧИЙ АМО', // Основной источник данных для всех модулей
