@@ -1,0 +1,602 @@
+/**********************************************************
+ * СВОДНАЯ АНАЛИТИКА AMOcrm — единый скрипт
+ * (PT Sans, топ-5 каналов, конверсия, % по этапам,
+ *  объединение ya_map и ya_map#booking, доход AX→E)
+ **********************************************************/
+const SUMMARY_CFG = {
+  RA_SHEET: 'РАБОЧИЙ АМО',
+  REPORT_SHEET: 'СВОДНАЯ АНАЛИТИКА AMOcrm',
+  FONT: 'PT Sans',
+  SUCCESS_RE: /(оплач|успеш.*в\s*рп|успеш.*реализ)/i, // только эти считаем успешными
+  // Заголовки, которые ищем гибко
+  HEADERS: {
+    ID: ['ID','Сделка.ID'],
+    STATUS: ['Статус','Сделка.Статус'],
+    BUDGET: ['Бюджет','Сделка.Бюджет'],
+    PHONE: ['Телефон','Контакт.Телефон','Phone'],
+    AX: ['Сумма ₽'],        // возьмём ПОСЛЕДНЮЮ из «Сумма ₽» (AX)
+    SOURCE_TEL: ['R.Источник ТЕЛ сделки','Источник ТЕЛ сделки','R.Источник ТЕЛ'],
+    UTM_SOURCE: ['UTM_SOURCE','utm_source'],
+  }
+};
+
+// ===== ПУБЛИЧНО =====
+function buildAmoSummary(){
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ra = readRA_(ss);
+  const rows = ra.rows;
+  if (!rows.length) return;
+
+  // ---- Агрегации ----
+  let total = 0, success = 0, revenueAll = 0;
+  let withPhone = 0, successWithPhone = 0;
+
+  const byStage = new Map();     // статус -> кол-во
+  const byChannel = new Map();   // канал -> {leads, success, revenue}
+
+  rows.forEach(r=>{
+    total += 1;
+
+    const status = asString_(r[ra.idx.status]).trim();
+    inc_(byStage, normalizeStage_(status), 1);
+
+    const isSuccess = SUMMARY_CFG.SUCCESS_RE.test(status);
+    if (isSuccess) success += 1;
+
+    const phone = asString_(r[ra.idx.phone]).trim();
+    const hasPhone = !!cleanDigits_(phone);
+    if (hasPhone) {
+      withPhone += 1;
+      if (isSuccess) successWithPhone += 1;
+    }
+
+    const channel = normalizeChannel_(asString_(r[ra.idx.sourceTel]), asString_(r[ra.idx.utmSource]));
+    const bucket = byChannel.get(channel) || {leads:0, success:0, revenue:0};
+    bucket.leads += 1;
+
+    // доход только по успешным
+    if (isSuccess) {
+      const ax = toNumber_(r[ra.idx.ax]);        // AX — предпочтительно
+      const budget = toNumber_(r[ra.idx.budget]); // fallback если AX=0
+      const sum = (ax > 0 ? ax : budget);
+      bucket.success += 1;
+      bucket.revenue += sum;
+      revenueAll += sum;
+    }
+    byChannel.set(channel, bucket);
+  });
+
+  const avgCheck = success ? revenueAll / success : 0;
+  const convAll  = total ? success / total : 0;
+  const convTel  = withPhone ? successWithPhone / withPhone : 0;
+
+  // ---- Плоские таблицы ----
+  // Топ-5 по доходу
+  const chanArray = [...byChannel.entries()].map(([ch, v])=>{
+    return [ch, v.leads, v.success, v.revenue, (v.success? v.revenue/v.success:0), (v.leads? v.success/v.leads:0)];
+  });
+  chanArray.sort((a,b)=>b[3]-a[3]); // по доходу
+  const top5 = chanArray.slice(0,5);
+
+  // Все каналы для графика
+  const allChannels = [...chanArray];
+
+  // Этапы: % от всех сделок
+  const stages = [...byStage.entries()].map(([st, c])=>{
+    return [st, c, (total? c/total:0)];
+  }).sort((a,b)=>a[0].localeCompare(b[0], 'ru'));
+
+  // ---- Рендер ----
+  const sh = ss.getSheetByName(SUMMARY_CFG.REPORT_SHEET) || ss.insertSheet(SUMMARY_CFG.REPORT_SHEET);
+  sh.clear();
+  setFontAll_(sh, SUMMARY_CFG.FONT);
+
+  let r = 1, c = 1;
+
+  // Заголовок
+  drawBand_(sh, r, c, 1, 14, '#153E5C'); // тёмно-синий
+  sh.getRange(r, c, 1, 14).merge().setValue('🏆 СВОДНАЯ АНАЛИТИКА AMOcrm')
+    .setFontSize(18).setFontWeight('bold').setHorizontalAlignment('left').setVerticalAlignment('middle').setFontColor('#ffffff');
+  r += 1;
+
+  // Последнее обновление
+  sh.getRange(r, c).setValue('Последнее обновление:').setFontWeight('bold');
+  sh.getRange(r, c+1).setValue(new Date()).setNumberFormat('dd.MM.yyyy, HH:mm:ss');
+  r += 2;
+
+  // ===== Ключевые показатели =====
+  sectionTitle_(sh, r, c, '✅ КЛЮЧЕВЫЕ ПОКАЗАТЕЛИ', 9, '#D8EAC6'); r++;
+  const headKPI = ['Метрика','Значение','Описание'];
+  const dataKPI = [
+    ['Всего сделок', total, 'общее количество'],
+    ['Успешных сделок', success, 'Оплачено / Успешно в РП / Успешно реализовано'],
+    ['Общий доход ₽', revenueAll, 'AX, если 0 → Бюджет (для успешных)'],
+    ['Средний чек ₽', avgCheck, 'Доход / Успешные'],
+    ['Конверсия', convAll, 'Успешные / Все'],
+    ['Сделок с телефоном', withPhone, 'кол-во с заполненным телефоном'],
+    ['Конверсия по телефону', convTel, 'Успешные с телефоном / Все с телефоном']
+  ];
+  writeTable_(sh, r, c, headKPI, dataKPI, {moneyCols:[2], percentCols:[2]}); // оформим ниже вручную форматами
+  // Форматы KPI
+  formatMoneyCol_(sh, r+1, c+1, dataKPI.length, 1, false);       // «Значение» — числа/деньги/проценты; ниже доп.форматы:
+  sh.getRange(r+1, c+2, dataKPI.length, 1).setWrap(true);
+  // Деньги/проценты по строкам
+  sh.getRange(r+1+2, c+1).setNumberFormat('#,##0');             // Общий доход ₽
+  sh.getRange(r+1+3, c+1).setNumberFormat('#,##0');             // Средний чек ₽
+  sh.getRange(r+1+4, c+1).setNumberFormat('0.00%');             // Конверсия
+  sh.getRange(r+1+6, c+1).setNumberFormat('0.00%');             // Конверсия по телефону
+  r += (dataKPI.length + 3);
+
+  // ===== ТОП-5 каналов по доходу =====
+  sectionTitle_(sh, r, c, '📈 ТОП-5 КАНАЛОВ ПО ДОХОДУ', 14, '#FFD7C2'); r++;
+  const headTop = ['Канал','Сделки','Успешные','Доход ₽','Ср. чек ₽','Конверсия'];
+  writeTable_(sh, r, c, headTop, top5);
+  // Форматы
+  formatMoneyCol_(sh, r+1, c+3, top5.length, 1, true);   // Доход
+  formatMoneyCol_(sh, r+1, c+4, top5.length, 1, true);   // Ср. чек
+  sh.getRange(r+1, c+5, top5.length, 1).setNumberFormat('0.00%');
+  r += (top5.length + 3);
+
+  // ===== Распределение по этапам =====
+  sectionTitle_(sh, r, c, '🧩 РАСПРЕДЕЛЕНИЕ ПО ЭТАПАМ СДЕЛОК', 9, '#FFE6A8'); r++;
+  const headStage = ['Этап','Количество','Процент'];
+  writeTable_(sh, r, c, headStage, stages);
+  sh.getRange(r+1, c+1, stages.length, 1).setNumberFormat('#,##0');
+  sh.getRange(r+1, c+2, stages.length, 1).setNumberFormat('0.00%');
+  r += (stages.length + 3);
+
+  // ===== Доход по каналам (для графика) =====
+  sectionTitle_(sh, r, c, '🟩 ДОХОД ПО КАНАЛАМ', 6, '#CFE9CF'); r++;
+  const headAll = ['Канал','Доход'];
+  const dataAll = allChannels.map(a=>[a[0], a[3]]);
+  writeTable_(sh, r, c, headAll, dataAll);
+  formatMoneyCol_(sh, r+1, c+1, dataAll.length, 1, true);
+  const chartStartRow = r, chartRows = Math.max(1, dataAll.length+1);
+  r += (dataAll.length + 2);
+
+  // Диаграмма (столбик) по доходу
+  try {
+    const old = sh.getCharts(); old.forEach(ch => sh.removeChart(ch));
+    const chart = sh.newChart()
+      .setChartType(Charts.ChartType.COLUMN)
+      .addRange(sh.getRange(chartStartRow, c, chartRows, 2))
+      .setOption('title','Доход по каналам')
+      .setOption('legend.position','none')
+      .setOption('useFirstColumnAsDomain', true)
+      .setOption('titleTextStyle',{fontSize:16,bold:true})
+      .setOption('hAxis',{slantedText:true, slantedTextAngle:20})
+      .setOption('chartArea',{left:40, top:40, width:'80%', height:'55%'})
+      .setPosition(chartStartRow+2, 8, 0, 0)
+      .build();
+    sh.insertChart(chart);
+  } catch(e){}
+
+  // Общая косметика
+  autoResizeAll_(sh);
+}
+
+// Триггер «каждый час»
+function setHourlyTrigger_Summary(){
+  ScriptApp.getProjectTriggers().forEach(t=>{
+    if (t.getHandlerFunction()==='buildAmoSummary') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('buildAmoSummary').timeBased().everyHours(1).create();
+}
+
+/* ================= ВСПОМОГАТЕЛЬНЫЕ ================= */
+
+function readRA_(ss){
+  const sh = ss.getSheetByName(SUMMARY_CFG.RA_SHEET);
+  if (!sh) throw new Error('Нет листа "'+SUMMARY_CFG.RA_SHEET+'"');
+
+  // шапка во 2-й строке (как в «РАБОЧИЙ АМО»), но подстрахуемся
+  const peek = sh.getRange(1,1,Math.min(5, sh.getLastRow()||5), Math.min(200, sh.getLastColumn()||50)).getValues();
+  let headerRow = 2;
+  for (let r=0;r<peek.length;r++){
+    const row = peek[r].map(String);
+    if (row.includes('ID') && (row.includes('Статус') || row.includes('Дата создания'))) { headerRow = r+1; break; }
+  }
+  const lastRow = sh.getLastRow(), lastCol = sh.getLastColumn();
+  if (lastRow < headerRow+1) return {header:[],rows:[],idx:{}};
+  const header = sh.getRange(headerRow,1,1,lastCol).getValues()[0].map(String);
+  const rows = sh.getRange(headerRow+1,1,lastRow-headerRow,lastCol).getValues();
+
+  // индексы
+  const idx = {};
+  idx.status = findHeaderIndex_(header, SUMMARY_CFG.HEADERS.STATUS);
+  idx.budget = findHeaderIndex_(header, SUMMARY_CFG.HEADERS.BUDGET);
+  idx.phone  = findHeaderIndex_(header, SUMMARY_CFG.HEADERS.PHONE);
+  idx.sourceTel = findHeaderIndex_(header, SUMMARY_CFG.HEADERS.SOURCE_TEL);
+  idx.utmSource = findHeaderIndex_(header, SUMMARY_CFG.HEADERS.UTM_SOURCE);
+  // AX — берём ПОСЛЕДНЮЮ «Сумма ₽»
+  const sumIdxAll = findAllHeaderIndexes_(header, SUMMARY_CFG.HEADERS.AX);
+  idx.ax = sumIdxAll.length ? sumIdxAll[sumIdxAll.length-1] : -1;
+
+  return {header, rows, idx};
+}
+
+function normalizeStage_(s){
+  s = asString_(s).trim();
+  if (!s) return '(без статуса)';
+  return s;
+}
+
+// Канал: сперва V (телефонный), иначе W (utm_source). ya_map#booking → ya_map.
+function normalizeChannel_(telTag, utm){
+  let c = asString_(telTag).trim() || asString_(utm).trim();
+  if (!c) c = 'прямой с сайта';
+  const s = c.toLowerCase();
+  if (s === 'ya_map#booking') return 'ya_map';
+  // можешь дописать свои маппинги при необходимости
+  return c;
+}
+
+function asString_(v){ return v==null ? '' : String(v); }
+function toNumber_(v){
+  if (v==null || v==='') return 0;
+  const n = Number(String(v).replace(/\s/g,'').replace(',','.'));
+  return isNaN(n) ? 0 : n;
+}
+function cleanDigits_(s){ return String(s||'').replace(/\D/g,''); }
+
+function findHeaderIndex_(header, names){
+  const norm = header.map(h=>String(h||'').trim().toLowerCase());
+  for (const name of names){
+    const n = String(name).trim().toLowerCase();
+    let i = norm.indexOf(n);
+    if (i>-1) return i;
+    i = norm.findIndex(h => h===n || h.includes(n));
+    if (i>-1) return i;
+  }
+  return -1;
+}
+function findAllHeaderIndexes_(header, names){
+  const out = [];
+  const norm = header.map(h=>String(h||'').trim().toLowerCase());
+  for (const name of names){
+    const n = String(name).trim().toLowerCase();
+    norm.forEach((h,i)=>{ if (h===n || h.includes(n)) out.push(i); });
+  }
+  return out;
+}
+
+// Map.increment helper
+function inc_(map, key, by){ const v = map.get(key)||0; map.set(key, v+(by||1)); }
+
+// ---------- оформление ----------
+function setFontAll_(sh, font){
+  const rng = sh.getRange(1,1,Math.max(1, sh.getMaxRows()), Math.max(1, sh.getMaxColumns()));
+  rng.setFontFamily(font);
+}
+function drawBand_(sh, row, col, rows, cols, bg){
+  ensureSize_(sh, row+rows-1, col+cols-1);
+  sh.getRange(row, col, rows, cols).setBackground(bg);
+}
+function sectionTitle_(sh, row, col, text, width, bg){
+  ensureSize_(sh, row, col+Math.max(1,width)-1);
+  const rng = sh.getRange(row, col, 1, Math.max(1,width));
+  try{ rng.merge(); }catch(e){}
+  rng.setValue(text).setFontWeight('bold').setFontSize(14).setBackground(bg).setBorder(null,null,true,null,false,false,'#4A90E2',SpreadsheetApp.BorderStyle.SOLID);
+}
+function writeTable_(sh, row, col, header, data, opts){
+  opts = opts || {};
+  ensureSize_(sh, row + Math.max(1,data.length), col + header.length - 1);
+  const headR = sh.getRange(row, col, 1, header.length);
+  headR.setValues([header]).setFontWeight('bold').setBackground('#E9F2FB');
+  if (data.length) {
+    sh.getRange(row+1, col, data.length, header.length).setValues(data.map(r=>r.map(v=>{
+      if (v===null || v===undefined || (typeof v==='number' && !isFinite(v))) return '';
+      return v;
+    })));
+  }
+  // сетка и зебра
+  const totalRows = Math.max(1, data.length+1);
+  const rng = sh.getRange(row, col, totalRows, header.length);
+  rng.setBorder(true,true,true,true,true,true);
+  if (data.length){
+    const zebra = sh.getRange(row+1, col, data.length, header.length);
+    const bgs = [];
+    for (let i=0;i<data.length;i++){
+      const color = (i%2===0) ? '#F8FCFF' : '#FFFFFF';
+      bgs.push(new Array(header.length).fill(color));
+    }
+    zebra.setBackgrounds(bgs);
+  }
+}
+function formatMoneyCol_(sh, row, col, nRows, nCols, withSpace){
+  const fmt = withSpace ? '#,##0' : '#,##0';
+  sh.getRange(row, col, nRows, nCols).setNumberFormat(fmt);
+}
+function ensureSize_(sh, needRow, needCol){
+  if (sh.getMaxRows() < needRow) sh.insertRowsAfter(sh.getMaxRows(), needRow - sh.getMaxRows());
+  if (sh.getMaxColumns() < needCol) sh.insertColumnsAfter(sh.getMaxColumns(), needCol - sh.getMaxColumns());
+}
+function autoResizeAll_(sh){
+  const cols = sh.getLastColumn();
+  for (let c=1;c<=cols;c++) try{ sh.autoResizeColumn(c); }catch(e){}
+}
+
+/**********************
+ *  НАСТРОЙКИ ДАШБОРДА
+ **********************/
+const DASH = {
+  OUT:   'РАБОЧИЙ АМО',               // лист-источник
+  SHEET: 'СВОДНАЯ АНАЛИТИКА AMOcrm',  // лист дашборда
+  // координаты секций (по твоей раскладке)
+  KEYS_ROW:   5,   // "Ключевые показатели" (таблица начинается с этой строки)
+  TOP5_ROW:   14,  // "Топ-5 каналов по доходу"
+  STAGES_ROW: 23,  // "Распределение по этапам сделок"
+  INCOME_ROW: 36   // "Доход по каналам"
+};
+
+// статусы, считаем как успешные
+const SUCCESS_STATUSES = ['Оплачено','Успешно в РП','Успешно реализовано'];
+
+/**********************
+ *  ГЛАВНАЯ ФУНКЦИЯ
+ **********************/
+function buildAmoDashboard_v2(){
+  const ss  = SpreadsheetApp.getActiveSpreadsheet();
+  const amo = ss.getSheetByName(DASH.OUT);
+  if (!amo) throw new Error('Нет листа "'+DASH.OUT+'"');
+
+  const vals   = amo.getDataRange().getValues();
+  const header = (vals[1]||[]).map(String);
+  const rows   = vals.slice(2).filter(r=>r.some(x=>String(x).trim()!==''));
+
+  const iCreated   = header.indexOf('Дата создания');
+  const iStatus    = header.indexOf('Статус');
+  const iBudget    = header.indexOf('Бюджет');
+  const iUtm       = header.indexOf('UTM_SOURCE');
+  const iTelTag    = header.indexOf('R.Источник ТЕЛ сделки');
+  const iLastForm  = header.indexOf('Последняя заявка');
+  const iFormId    = header.indexOf('FORMID');
+  const iFormName  = header.indexOf('FORMNAME');
+  const iRef       = header.indexOf('REFERER');
+  const iDate      = header.indexOf('DATE');
+
+  let iAX = -1; header.forEach((h,i)=>{ if(/сумма\s*₽/i.test(h)) iAX=i; });
+
+  let total=0, succ=0, incomeSum=0;
+  const stageCount  = new Map();
+  const channelStat = new Map();
+  const monthStat   = new Map();
+
+  rows.forEach(r=>{
+    const created = r[iCreated]; if(!created) return;
+    total++;
+
+    const st  = normalizeStatus_(String(r[iStatus]||''));
+    const ok  = SUCCESS_STATUSES.includes(st);
+    const rev = revenueFromRow_(r, iAX, iBudget, ok);
+    if (ok){ succ++; incomeSum += rev; }
+
+    stageCount.set(st,(stageCount.get(st)||0)+1);
+
+    const chan = normalizeChannel_(r, header, {iTelTag,iUtm,iLastForm,iFormId,iFormName,iRef,iDate});
+    const cs = channelStat.get(chan)||{leads:0,succ:0,income:0};
+    cs.leads++; if(ok){ cs.succ++; cs.income+=rev; }
+    channelStat.set(chan, cs);
+
+    const m = monthKey_(created);
+    const ms = monthStat.get(m.key)||{label:m.label, leads:0, succ:0, income:0, order:m.key};
+    ms.leads++; if(ok){ ms.succ++; ms.income+=rev; }
+    monthStat.set(m.key, ms);
+  });
+
+  const avgCheck = succ ? incomeSum/succ : 0;
+  const conv     = total ? succ/total : 0;
+
+  const channelsMerged = mergeAliasesAll_(channelStat);
+  const chanArr = [...channelsMerged.values()].sort((a,b)=>b.income-a.income);
+  const months  = [...monthStat.values()].sort((a,b)=>a.order.localeCompare(b.order));
+
+  const sh = ss.getSheetByName(DASH.SHEET) || ss.insertSheet(DASH.SHEET);
+  sh.getRange(1,1,sh.getMaxRows(),sh.getMaxColumns()).setFontFamily('PT Sans');
+
+  // штамп
+  sh.getRange(2,1,1,2).setValues([['Последнее обновление:', new Date()]]);
+
+  // ключевые показатели
+  const keys = [
+    ['Всего сделок',        total,     'общее количество'],
+    ['Успешных сделок',     succ,      'Оплачено / Успешно в РП / Успешно реализовано'],
+    ['Общий доход ₽',       incomeSum, 'AX, если 0 → Бюджет (для успешных)'],
+    ['Средний чек ₽',       avgCheck,  'Доход / Успешные'],
+    ['Конверсия',           conv,      'Успешные / Все'],
+    ['Сделок с телефоном',  countPhone_(rows, header), 'есть телефон'],
+    ['Конверсия по телефону', convPhone_(rows, header), 'Успешные с телефоном / Все с телефоном']
+  ];
+  sh.getRange(DASH.KEYS_ROW,1,keys.length,3).clearContent();
+  sh.getRange(DASH.KEYS_ROW,1,keys.length,3).setValues(keys);
+  // форматы KPI
+  sh.getRange(DASH.KEYS_ROW+2,2,1,1).setNumberFormat('# ##0');  // доход
+  sh.getRange(DASH.KEYS_ROW+3,2,1,1).setNumberFormat('# ##0');  // ср.чек
+  sh.getRange(DASH.KEYS_ROW+4,2,1,1).setNumberFormat('0.00%');  // конверсия
+  sh.getRange(DASH.KEYS_ROW+6,2,1,1).setNumberFormat('0.00%');  // конверсия по телефону
+
+  // ТОП-5
+  const topHeader = ['Канал','Сделки','Успешные','Доход ₽','Ср. чек ₽','Конверсия'];
+  const top5 = chanArr.slice(0,5).map(c=>[
+    c.name, c.leads, c.succ, c.income, c.succ?c.income/c.succ:0, c.leads?c.succ/c.leads:0
+  ]);
+  sh.getRange(DASH.TOP5_ROW,1,1,topHeader.length).setValues([topHeader]).setFontWeight('bold');
+  sh.getRange(DASH.TOP5_ROW+1,1,Math.max(1,top5.length),topHeader.length).clearContent();
+  if (top5.length){
+    sh.getRange(DASH.TOP5_ROW+1,1,top5.length,topHeader.length).setValues(top5);
+    sh.getRange(DASH.TOP5_ROW+1,4,top5.length,1).setNumberFormat('# ##0'); // Доход
+    sh.getRange(DASH.TOP5_ROW+1,5,top5.length,1).setNumberFormat('# ##0'); // Ср. чек
+    sh.getRange(DASH.TOP5_ROW+1,6,top5.length,1).setNumberFormat('0.00%'); // Конверсия
+  }
+
+  // Этапы
+  const stages = [...stageCount.entries()].sort((a,b)=>b[1]-a[1]).map(([n,c])=>[n,c,total?c/total:0]);
+  sh.getRange(DASH.STAGES_ROW,1,1,3).setValues([['Этап','Количество','Процент']]).setFontWeight('bold');
+  sh.getRange(DASH.STAGES_ROW+1,1,Math.max(1,stages.length),3).clearContent();
+  if (stages.length){
+    sh.getRange(DASH.STAGES_ROW+1,1,stages.length,3).setValues(stages);
+    sh.getRange(DASH.STAGES_ROW+1,2,stages.length,1).setNumberFormat('0');       // Количество
+    sh.getRange(DASH.STAGES_ROW+1,3,stages.length,1).setNumberFormat('0.00%');   // Процент
+  }
+
+  // Доход по каналам (полная таблица)
+  sh.getRange(DASH.INCOME_ROW,1,1,2).setValues([['Канал','Доход']]).setFontWeight('bold');
+  const chBody = chanArr.map(c=>[c.name,c.income]);
+  sh.getRange(DASH.INCOME_ROW+1,1,Math.max(1,chBody.length),2).clearContent();
+  if (chBody.length){
+    sh.getRange(DASH.INCOME_ROW+1,1,chBody.length,2).setValues(chBody);
+    sh.getRange(DASH.INCOME_ROW+1,2,chBody.length,1).setNumberFormat('# ##0');
+  }
+
+  // Лиды по месяцам
+  const monthStart = DASH.INCOME_ROW + 2 + chBody.length + 3;
+  const mHeader = ['Месяц','Лиды','Успешные','Доход ₽','Конверсия','Ср. чек ₽'];
+  const mBody = months.map(m=>[
+    m.label, m.leads, m.succ, m.income,
+    m.leads? m.succ/m.leads : 0,
+    m.succ?  m.income/m.succ : 0
+  ]);
+  sh.getRange(monthStart,1,1,mHeader.length).setValues([mHeader]).setFontWeight('bold');
+  sh.getRange(monthStart+1,1,Math.max(1,mBody.length),mHeader.length).clearContent();
+  if (mBody.length){
+    sh.getRange(monthStart+1,1,mBody.length,mHeader.length).setValues(mBody);
+    sh.getRange(monthStart+1,4,mBody.length,1).setNumberFormat('# ##0');  // Доход
+    sh.getRange(monthStart+1,5,mBody.length,1).setNumberFormat('0.00%');  // Конверсия
+    sh.getRange(monthStart+1,6,mBody.length,1).setNumberFormat('# ##0');  // Ср. чек
+  }
+}
+
+/**********************
+ *  ТРИГГЕРЫ / МЕНЮ
+ **********************/
+function setHourlyTrigger(){
+  ScriptApp.getProjectTriggers()
+    .filter(t=>t.getHandlerFunction()==='buildAmoDashboard_v2')
+    .forEach(t=>ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('buildAmoDashboard_v2').timeBased().everyHours(1).create();
+}
+
+function onOpen(){
+  SpreadsheetApp.getUi()
+    .createMenu('AMO Аналитика')
+    .addItem('Обновить дашборд', 'buildAmoDashboard_v2')
+    .addItem('Поставить hourly-триггер', 'setHourlyTrigger')
+    .addToUi();
+}
+
+/**********************
+ *  ХЕЛПЕРЫ
+ **********************/
+function normalizeStatus_(raw){
+  let s = String(raw||'').trim();
+  // обрезаем приставки/хвосты
+  s = s.replace(/^\s*все\s*бары\s*сети\s*(?:[\/\\|:\-–—]\s*)?/i,'')
+       .replace(/\s*(?:-|–|—)\s*.*$/,'').trim();
+
+  const rules = [
+    [/оплач/i,                  'Оплачено'],
+    [/успеш.*в\s*рп/i,          'Успешно в РП'],
+    [/успеш.*реализ/i,          'Успешно реализовано'],
+    [/закрыто.*не.*реализ/i,    'Закрыто и не реализовано'],
+    [/контрол.*оплат/i,         'Контроль оплаты'],
+    [/перенос.*открытой.*дат/i, 'Перенос с открытой датой'],
+    [/вопрос.*бару/i,           'Вопрос к бару'],
+    [/ндз|не\s*дозвон/i,        'НДЗ'],
+    [/авто.*распредел/i,        'Автораспределение'],
+    [/взял.*в\s*работу|в работе/i, 'Взяли в работу'],
+    [/отменен.*рестоплейс/i,    'Отменен в Рестоплейс']
+  ];
+  for (const [re,n] of rules){ if (re.test(s)) return n; }
+  return s || 'Новый лид';
+}
+
+function revenueFromRow_(r, iAX, iBudget, isSuccess){
+  const ax = toNumber_(r[iAX]);
+  if (isSuccess){
+    if (ax && ax>0) return ax;
+    return toNumber_(r[iBudget]); // предоплата, если AX = 0
+  }
+  return 0;
+}
+
+function normalizeChannel_(r, header, idx){
+  const tel = String(idx.iTelTag>-1 ? (r[idx.iTelTag]||'') : '').trim().toLowerCase();
+  if (tel) return mergeAliasName_(tel);
+
+  const utm = String(idx.iUtm>-1 ? (r[idx.iUtm]||'') : '').trim().toLowerCase();
+  if (utm) return mergeAliasName_(utm);
+
+  // прямой сайт (есть следы формы, но utm пуст)
+  const hasForm = [idx.iLastForm, idx.iFormId, idx.iFormName, idx.iRef, idx.iDate]
+    .some(i => i>-1 && String(r[i]||'').trim()!=='');
+  if (hasForm) return 'direct_site';
+
+  return '(без канала)';
+}
+
+function mergeAliasName_(name){
+  if (name==='ya_map#booking') return 'ya_map';
+  return name;
+}
+function mergeAliasesAll_(mapIn){
+  const out = new Map();
+  for (const [n,v] of mapIn.entries()){
+    const k = mergeAliasName_(n);
+    const t = out.get(k)||{name:k,leads:0,succ:0,income:0};
+    t.leads+=v.leads; t.succ+=v.succ; t.income+=v.income;
+    out.set(k,t);
+  }
+  return out;
+}
+
+function monthKey_(d){
+  const dt = (d instanceof Date) ? d : new Date(d);
+  const y = dt.getFullYear();
+  const m = dt.getMonth();
+  const MMM = ['ЯНВ','ФЕВ','МАР','АПР','МАЙ','ИЮН','ИЮЛ','АВГ','СЕН','ОКТ','НОЯ','ДЕК'][m];
+  const label = `${MMM} ’${String(y).slice(-2)}`;
+  // ключ для сортировки: YYYY-MM
+  const key = `${y}-${('0'+(m+1)).slice(-2)}`;
+  return {key, label};
+}
+
+function countPhone_(rows, header){
+  const iPhone = findPhoneIndex_(header);
+  if (iPhone<0) return 0;
+  let k=0; rows.forEach(r=>{ if (cleanPhone_(r[iPhone])) k++; });
+  return k;
+}
+function convPhone_(rows, header){
+  const iPhone = findPhoneIndex_(header);
+  const iStatus = header.indexOf('Статус');
+  if (iPhone<0 || iStatus<0) return 0;
+  let total=0, succ=0;
+  rows.forEach(r=>{
+    if (cleanPhone_(r[iPhone])){
+      total++;
+      const st = normalizeStatus_(r[iStatus]);
+      if (SUCCESS_STATUSES.includes(st)) succ++;
+    }
+  });
+  return total ? succ/total : 0;
+}
+function findPhoneIndex_(header){
+  const cand = ['Телефон','Контакт.Телефон','Phone'];
+  for (const name of cand){
+    const i = header.indexOf(name);
+    if (i>-1) return i;
+  }
+  return -1;
+}
+
+function toNumber_(v){
+  const n = Number(String(v||'').replace(/\s+/g,'').replace(',','.'));
+  return isNaN(n)?0:n;
+}
+function cleanPhone_(s){
+  const d = String(s||'').replace(/\D/g,'');
+  if (!d) return '';
+  if (d.length===11 && /^[78]/.test(d)) return d.slice(1);
+  if (d.length>=10) return d.slice(-10);
+  return d;
+}
