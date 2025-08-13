@@ -193,14 +193,36 @@ function buildMergedAmoFile() {
     
     // Загружаем и объединяем данные из двух источников
     const mergedData = loadAndMergeAmoSources_();
+    console.log(`📊 ЗАГРУЖЕНО: ${mergedData.length} строк перед санитизацией`);
+    
+    if (mergedData.length > 0) {
+      console.log(`📋 ПРИМЕР ДАННЫХ: первая строка содержит ${mergedData[0].length} колонок`);
+      // Проверяем типы данных в первой строке
+      const firstRow = mergedData[0];
+      const typeInfo = firstRow.slice(0, 10).map((cell, index) => `[${index}]: ${typeof cell}`);
+      console.log(`🔍 ТИПЫ ДАННЫХ (первые 10 колонок): ${typeInfo.join(', ')}`);
+    }
     
     // Санитизация данных: приводим все к строкам перед записью
     const sanitizedData = sanitizeDataForSheet_(mergedData);
     
     // Записываем данные в лист
     if (sanitizedData.length > 0) {
+      console.log(`📝 ЗАПИСЬ: Записываю ${sanitizedData.length} строк в лист РАБОЧИЙ_АМО`);
+      
+      // Проверим типы данных в первых нескольких строках после санитизации
+      if (sanitizedData.length > 0 && sanitizedData[0].length > 10) {
+        const sampleRow = sanitizedData[0];
+        const sampleTypes = sampleRow.slice(0, 10).map((cell, index) => 
+          `[${index}]: "${cell}" (${typeof cell})`
+        );
+        console.log(`🔍 ПОСЛЕ САНИТИЗАЦИИ (первые 10): ${sampleTypes.join(', ')}`);
+      }
+      
       const range = sheet.getRange(2, 1, sanitizedData.length, sanitizedData[0].length);
       range.setValues(sanitizedData);
+      
+      console.log(`✅ ЗАПИСАНО: ${sanitizedData.length} строк успешно записаны в лист`);
       
       // Автоподбор ширины колонок для первых колонок
       sheet.autoResizeColumns(1, Math.min(15, sanitizedData[0].length));
@@ -1962,11 +1984,15 @@ function checkApiConfiguration() {
  */
 function sanitizeDataForSheet_(data) {
   if (!data || !Array.isArray(data)) {
-    console.warn('⚠️ sanitizeDataForSheet_: Получены некорректные данные');
+    console.warn('⚠️ sanitizeDataForSheet_: Получены некорректные данные:', typeof data);
     return [];
   }
   
   console.log(`🧹 САНИТИЗАЦИЯ: Обрабатываю ${data.length} строк данных...`);
+  
+  let nullCount = 0;
+  let undefinedCount = 0;
+  let nonStringCount = 0;
   
   const sanitizedData = data.map((row, rowIndex) => {
     if (!Array.isArray(row)) {
@@ -1976,7 +2002,13 @@ function sanitizeDataForSheet_(data) {
     
     return row.map((cell, cellIndex) => {
       // Приводим все к строке и обрабатываем особые случаи
-      if (cell === null || cell === undefined) {
+      if (cell === null) {
+        nullCount++;
+        return '';
+      }
+      
+      if (cell === undefined) {
+        undefinedCount++;
         return '';
       }
       
@@ -1985,14 +2017,17 @@ function sanitizeDataForSheet_(data) {
       }
       
       if (typeof cell === 'number') {
+        nonStringCount++;
         return cell.toString();
       }
       
       if (typeof cell === 'boolean') {
+        nonStringCount++;
         return cell.toString();
       }
       
       if (cell instanceof Date) {
+        nonStringCount++;
         // Форматируем дату в ДД.ММ.ГГГГ
         const day = String(cell.getDate()).padStart(2, '0');
         const month = String(cell.getMonth() + 1).padStart(2, '0');
@@ -2002,6 +2037,7 @@ function sanitizeDataForSheet_(data) {
       
       // Для всех остальных типов - приводим к строке
       try {
+        nonStringCount++;
         return String(cell);
       } catch (error) {
         console.warn(`⚠️ Не удалось привести к строке [${rowIndex}][${cellIndex}]:`, cell);
@@ -2011,6 +2047,8 @@ function sanitizeDataForSheet_(data) {
   });
   
   console.log(`✅ САНИТИЗАЦИЯ: Обработано ${sanitizedData.length} строк`);
+  console.log(`📊 СТАТИСТИКА: null=${nullCount}, undefined=${undefinedCount}, преобразовано=${nonStringCount}`);
+  
   return sanitizedData;
 }
 }
