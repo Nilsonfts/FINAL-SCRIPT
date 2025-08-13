@@ -50,7 +50,7 @@ function analyzeRefusalReasons() {
 }
 
 /**
- * Получает данные отклонённых сделок для анализа
+ * Получает данные отклонённых сделок для анализа - ИСПРАВЛЕННАЯ ВЕРСИЯ
  * @returns {Array} Массив отклонённых сделок
  * @private
  */
@@ -70,85 +70,114 @@ function getRefusedDealsData_() {
   
   logInfo_('REFUSAL_ANALYSIS', `Анализируем ${rows.length} записей для поиска отказов`);
   
-  // Фильтруем отклонённые сделки по различным статусам
-  const refusedDeals = rows.filter(row => {
-    const statusIndex = findColumnIndex(headers, ['Статус', 'Status', 'Сделка.Статус']);
-    if (statusIndex < 0) return false;
-    
-    const status = String(row[statusIndex] || '').toLowerCase().trim();
-    
-    // Расширенный список статусов отказа
-    const refusedStatuses = [
-      'закрыто и не реализовано',
-      'отклонена',
-      'отказ',
-      'failure',
-      'rejected',
-      'closed',
-      'не реализовано',
-      'отклонено',
-      'неуспешно реализовано',
-      'провал'
-    ];
-    
-    return refusedStatuses.some(refusedStatus => status.includes(refusedStatus));
-  });
+  // Ищем колонку D (индекс 3) - это статус
+  const statusColumnIndex = 3; // Колонка D
   
-  logInfo_('REFUSAL_ANALYSIS', `Найдено ${refusedDeals.length} отказанных сделок`);
-  
-  if (refusedDeals.length === 0) {
-    // Выводим статистику статусов для диагностики
-    const statusStats = {};
-    rows.forEach(row => {
-      const statusIndex = findColumnIndex(headers, ['Статус', 'Status', 'Сделка.Статус']);
-      if (statusIndex >= 0) {
-        const status = String(row[statusIndex] || 'Не указан');
-        statusStats[status] = (statusStats[status] || 0) + 1;
-      }
-    });
-    
-    logInfo_('REFUSAL_ANALYSIS', 'Статистика статусов:', statusStats);
+  if (headers.length <= statusColumnIndex) {
+    logError_('REFUSAL_ANALYSIS', `Колонка D не найдена. Всего колонок: ${headers.length}`);
     return [];
   }
   
+  logInfo_('REFUSAL_ANALYSIS', `Анализируем колонку D: "${headers[statusColumnIndex]}"`);
+  
+  // Точно фильтруем по статусу "Закрыто и не реализовано"
+  const refusedDeals = rows.filter(row => {
+    const status = String(row[statusColumnIndex] || '').trim();
+    return status === 'Закрыто и не реализовано';
+  });
+  
+  logInfo_('REFUSAL_ANALYSIS', `Найдено ${refusedDeals.length} отказанных сделок со статусом "Закрыто и не реализовано"`);
+  
+  if (refusedDeals.length === 0) {
+    // Проверяем, что вообще есть в колонке D
+    const statusStats = {};
+    rows.forEach(row => {
+      const status = String(row[statusColumnIndex] || 'Не указан');
+      statusStats[status] = (statusStats[status] || 0) + 1;
+    });
+    
+    logWarning_('REFUSAL_ANALYSIS', 'НЕ НАЙДЕНО ОТКАЗОВ! Статистика в колонке D:');
+    Object.entries(statusStats)
+      .sort(([,a], [,b]) => b - a)
+      .slice(0, 10)
+      .forEach(([status, count]) => {
+        logInfo_('REFUSAL_ANALYSIS', `"${status}": ${count} записей`);
+      });
+    
+    return [];
+  }
+  
+  // Определяем индексы нужных колонок
+  const dealIdIndex = findColumnIndex(headers, ['ID', 'Сделка.ID', 'Идентификатор']);
+  const dealNameIndex = findColumnIndex(headers, ['Название', 'Сделка.Название']);
+  const channelIndex = findColumnIndex(headers, ['utm_source', 'UTM_SOURCE', 'Сделка.utm_source', 'Источник']);
+  const createdDateIndex = findColumnIndex(headers, ['Дата создания', 'DATE', 'Сделка.Дата создания']);
+  const budgetIndex = findColumnIndex(headers, ['Бюджет', 'Сделка.Бюджет', 'Сумма', 'Сумма ₽']);
+  const managerIndex = findColumnIndex(headers, ['Ответственный', 'Кем создана', 'Менеджер']);
+  
+  // Ищем поля с комментариями (могут содержать причины отказа)
+  const commentIndex = findColumnIndex(headers, [
+    'Причина отказа', 
+    'Комментарий', 
+    'Примечания', 
+    'Notes', 
+    'Comment',
+    'Отказ',
+    'Сделка.Комментарий'
+  ]);
+  
+  logInfo_('REFUSAL_ANALYSIS', `Найдены индексы колонок:
+    ID: ${dealIdIndex >= 0 ? headers[dealIdIndex] : 'не найден'}
+    Название: ${dealNameIndex >= 0 ? headers[dealNameIndex] : 'не найден'}
+    Канал: ${channelIndex >= 0 ? headers[channelIndex] : 'не найден'}
+    Дата: ${createdDateIndex >= 0 ? headers[createdDateIndex] : 'не найден'}
+    Бюджет: ${budgetIndex >= 0 ? headers[budgetIndex] : 'не найден'}
+    Менеджер: ${managerIndex >= 0 ? headers[managerIndex] : 'не найден'}
+    Комментарий: ${commentIndex >= 0 ? headers[commentIndex] : 'не найден'}`);
+  
   // Формируем структурированные данные
   return refusedDeals.map((row, index) => {
-    const dealIdIndex = findColumnIndex(headers, ['ID', 'Сделка.ID', 'Deal ID']);
-    const dealNameIndex = findColumnIndex(headers, ['Название', 'Сделка.Название', 'Deal Name']);
-    const channelIndex = findColumnIndex(headers, ['Канал', 'Channel', 'Источник']);
-    const createdDateIndex = findColumnIndex(headers, ['Дата создания', 'Created Date', 'Date']);
-    const budgetIndex = findColumnIndex(headers, ['Бюджет', 'Budget', 'Сумма']);
-    const managerIndex = findColumnIndex(headers, ['Ответственный', 'Manager', 'Менеджер']);
-    const statusIndex = findColumnIndex(headers, ['Статус', 'Status', 'Сделка.Статус']);
-    
-    // Ищем комментарии в различных полях
-    const commentFields = ['Причина отказа', 'Комментарий', 'Примечания', 'Notes', 'Comment'];
-    let refusalComment = '';
-    
-    for (const field of commentFields) {
-      const fieldIndex = findColumnIndex(headers, [field]);
-      if (fieldIndex >= 0 && row[fieldIndex]) {
-        refusalComment = String(row[fieldIndex]);
-        break;
-      }
-    }
-    
-    // Если комментария нет, используем статус как причину
-    if (!refusalComment) {
-      refusalComment = String(row[statusIndex] || 'Причина не указана');
-    }
-    
     const dealId = dealIdIndex >= 0 ? String(row[dealIdIndex] || '') : `deal_${index}`;
     const dealName = dealNameIndex >= 0 ? String(row[dealNameIndex] || '') : 'Без названия';
     const channel = channelIndex >= 0 ? String(row[channelIndex] || 'Неизвестно') : 'Неизвестно';
     const createdDate = createdDateIndex >= 0 ? parseDate_(row[createdDateIndex]) : new Date();
     const budget = budgetIndex >= 0 ? (parseFloat(row[budgetIndex]) || 0) : 0;
     const manager = managerIndex >= 0 ? String(row[managerIndex] || 'Неназначен') : 'Неназначен';
-    const status = statusIndex >= 0 ? String(row[statusIndex] || 'Неизвестно') : 'Неизвестно';
+    const status = 'Закрыто и не реализовано';
     
-    // Ищем UTM данные
-    const utmSourceIndex = findColumnIndex(headers, ['UTM Source', 'utm_source', 'Источник UTM']);
-    const utmCampaignIndex = findColumnIndex(headers, ['UTM Campaign', 'utm_campaign', 'Кампания UTM']);
+    // Получаем комментарий (причину отказа)
+    let refusalComment = '';
+    if (commentIndex >= 0 && row[commentIndex]) {
+      refusalComment = String(row[commentIndex]).trim();
+    }
+    
+    // Если отдельного комментария нет, используем статус + любую доступную текстовую информацию
+    if (!refusalComment) {
+      // Пытаемся найти любые текстовые поля, которые могут содержать причину
+      const textFields = [];
+      row.forEach((cell, idx) => {
+        const cellValue = String(cell || '').trim();
+        if (cellValue && 
+            cellValue.length > 5 && 
+            cellValue !== status &&
+            cellValue !== dealName &&
+            cellValue !== dealId &&
+            !cellValue.match(/^\d+$/) && // не числа
+            !cellValue.match(/^\d{4}-\d{2}-\d{2}/) && // не даты
+            !cellValue.match(/^[+]?[\d\s\-\(\)]{7,15}$/) // не телефоны
+           ) {
+          textFields.push(cellValue);
+        }
+      });
+      
+      refusalComment = textFields.length > 0 ? 
+        textFields.slice(0, 2).join(' | ') : 
+        'Причина не указана - статус: ' + status;
+    }
+    
+    // UTM данные
+    const utmSourceIndex = findColumnIndex(headers, ['utm_source', 'UTM_SOURCE', 'Сделка.utm_source']);
+    const utmCampaignIndex = findColumnIndex(headers, ['utm_campaign', 'UTM_CAMPAIGN', 'Сделка.utm_campaign']);
     
     return {
       dealId: dealId,
@@ -797,5 +826,68 @@ function createEmptyRefusalReport_() {
     
   } catch (error) {
     logError_('REFUSAL_ANALYSIS', 'Ошибка создания пустого отчёта', error);
+  }
+}
+
+/**
+ * Быстрая диагностика данных для анализа отказов
+ * Запустите эту функцию для проверки данных
+ */
+function diagnoseRefusalData() {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const workingSheet = spreadsheet.getSheetByName('РАБОЧИЙ АМО');
+  
+  if (!workingSheet) {
+    console.log('❌ Лист "РАБОЧИЙ АМО" не найден');
+    return;
+  }
+  
+  const data = workingSheet.getDataRange().getValues();
+  const headers = data[0];
+  const rows = data.slice(1);
+  
+  console.log('📊 ДИАГНОСТИКА ДАННЫХ ДЛЯ АНАЛИЗА ОТКАЗОВ:');
+  console.log(`📋 Всего строк: ${rows.length}`);
+  console.log(`📋 Всего колонок: ${headers.length}`);
+  console.log(`📋 Колонка D: "${headers[3]}" (индекс 3)`);
+  
+  // Статистика по колонке D (статусы)
+  const statusStats = {};
+  rows.forEach(row => {
+    const status = String(row[3] || 'Пустая').trim();
+    statusStats[status] = (statusStats[status] || 0) + 1;
+  });
+  
+  console.log('\n📈 СТАТИСТИКА СТАТУСОВ (Колонка D):');
+  Object.entries(statusStats)
+    .sort(([,a], [,b]) => b - a)
+    .forEach(([status, count]) => {
+      const percentage = ((count / rows.length) * 100).toFixed(1);
+      console.log(`• "${status}": ${count} (${percentage}%)`);
+    });
+  
+  const refusedCount = statusStats['Закрыто и не реализовано'] || 0;
+  console.log(`\n🎯 ОТКАЗАННЫЕ СДЕЛКИ: ${refusedCount}`);
+  
+  if (refusedCount > 0) {
+    console.log('✅ Данные для анализа найдены!');
+    
+    // Проверяем наличие полей с комментариями
+    const commentFields = headers.filter((h, idx) => {
+      const normalized = String(h).toLowerCase();
+      return normalized.includes('комментарий') || 
+             normalized.includes('причина') ||
+             normalized.includes('примечания') ||
+             normalized.includes('отказ');
+    });
+    
+    if (commentFields.length > 0) {
+      console.log(`💬 Поля с комментариями: ${commentFields.join(', ')}`);
+    } else {
+      console.log('⚠️ Отдельные поля с комментариями не найдены, будем использовать статус и другие текстовые данные');
+    }
+  } else {
+    console.log('❌ Отказанные сделки не найдены!');
+    console.log('🔍 Проверьте, что в колонке D есть статус "Закрыто и не реализовано"');
   }
 }

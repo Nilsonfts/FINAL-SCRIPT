@@ -183,11 +183,19 @@ const CONFIG = {
   refusals: {
     SOURCE_SHEET: 'РАБОЧИЙ АМО',
     OUTPUT_SHEET: 'Причина отказов',
-    GPT_MODEL: 'gpt-4o',
-    FALLBACK_MODEL: 'gpt-4o-mini',
+    GPT_MODEL: 'gpt-4o-mini',  // Используем быструю модель
+    FALLBACK_MODEL: 'gpt-3.5-turbo',
     MAX_REASONS: 10,
     MIN_FREQUENCY: 2,
-    SAMPLE_SIZE: 50
+    SAMPLE_SIZE: 50,
+    
+    // ТОЧНЫЕ СТАТУСЫ ОТКАЗОВ ДЛЯ ВАШЕГО ПРОЕКТА
+    REFUSAL_STATUSES: [
+      'Закрыто и не реализовано'  // Ваш точный статус из колонки D
+    ],
+    
+    // Колонка со статусом (D = индекс 3)
+    STATUS_COLUMN_INDEX: 3
   },
 
   // ===== СРАВНИТЕЛЬНЫЙ АНАЛИЗ КАНАЛОВ =====
