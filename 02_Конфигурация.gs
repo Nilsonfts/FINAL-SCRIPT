@@ -134,6 +134,9 @@ const CONFIG = {
     DATETIME_FORMAT: 'dd.MM.yyyy HH:mm',
     TIME_FORMAT: 'HH:mm',
     
+    // Временная зона
+    TIMEZONE: 'Europe/Moscow',  // Московское время
+    
     // Форматы чисел
     NUMBER_FORMAT: '#,##0',
     CURRENCY_FORMAT: '#,##0 ₽',
@@ -199,7 +202,11 @@ const CONFIG = {
     
     // Логирование
     LOG_LEVEL: 'INFO',            // ERROR, WARN, INFO, DEBUG
-    MAX_LOG_ENTRIES: 1000
+    MAX_LOG_ENTRIES: 1000,
+    
+    // Региональные настройки
+    DEFAULT_TIMEZONE: 'Europe/Moscow',  // По умолчанию Московское время
+    DEFAULT_LOCALE: 'ru_RU'             // Русская локаль
   }
 };
 
@@ -422,6 +429,44 @@ function getApiTokensStatus() {
     totalCount,
     percentage: Math.round(configuredCount / totalCount * 100)
   };
+}
+
+/**
+ * БЕЗОПАСНОЕ ФОРМАТИРОВАНИЕ ДАТ
+ */
+function safeFormatDate(date, format = null, timezone = null) {
+  try {
+    if (!date) return '';
+    
+    // Используем настройки по умолчанию
+    const dateFormat = format || CONFIG.FORMATTING.DATE_FORMAT;
+    const timeZone = timezone || CONFIG.FORMATTING.TIMEZONE || CONFIG.SYSTEM.DEFAULT_TIMEZONE;
+    
+    // Преобразуем в Date объект если нужно
+    let dateObj;
+    if (date instanceof Date) {
+      dateObj = date;
+    } else if (typeof date === 'string') {
+      dateObj = new Date(date);
+    } else if (typeof date === 'number') {
+      dateObj = new Date(date);
+    } else {
+      return String(date);
+    }
+    
+    // Проверяем валидность даты
+    if (isNaN(dateObj.getTime())) {
+      console.warn('Неверная дата:', date);
+      return String(date);
+    }
+    
+    // Форматируем с учетом временной зоны
+    return Utilities.formatDate(dateObj, timeZone, dateFormat);
+    
+  } catch (error) {
+    console.warn('Ошибка форматирования даты:', date, error.message);
+    return String(date);
+  }
 }
 
 // Автоматическая валидация при загрузке
