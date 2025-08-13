@@ -147,7 +147,7 @@ const CONFIG = {
   },
 
   // Динамически определяемые колонки (будет установлено автоматически)
-  WORKING_AMO_COLUMNS: null
+  WORKING_AMO_COLUMNS: null,
 
   // Цветовая схема для отчетов
   COLORS: {
@@ -346,7 +346,7 @@ const UTM_SOURCE_MAPPING = {
 function getChannelTypeBySource(source) {
   if (!source) return 'unknown';
   
-  const lowerSource = source.toLowerCase();
+  const lowerSource = source.toString().toLowerCase();
   
   // Проверяем точные совпадения
   if (UTM_SOURCE_MAPPING[lowerSource]) {
@@ -366,7 +366,7 @@ function getChannelTypeBySource(source) {
 function isSuccessStatus(status) {
   if (!status) return false;
   
-  const lowerStatus = status.toLowerCase();
+  const lowerStatus = status.toString().toLowerCase();
   return SUCCESS_STATUSES.some(successStatus => 
     lowerStatus.includes(successStatus.toLowerCase())
   );

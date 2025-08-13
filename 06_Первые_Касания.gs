@@ -141,11 +141,13 @@ function determineTouchPoint(source, referer, formName, buttonText) {
   // Определяем основную точку касания
   let touchPoint = 'Неопределено';
   
-  if (source.toLowerCase().includes('директ') || source.toLowerCase().includes('google ads')) {
+  const sourceStr = (source || '').toString().toLowerCase();
+  
+  if (sourceStr.includes('директ') || sourceStr.includes('google ads')) {
     touchPoint = 'Контекстная реклама';
-  } else if (source.toLowerCase().includes('органика')) {
+  } else if (sourceStr.includes('органика')) {
     touchPoint = 'Органический поиск';
-  } else if (source.toLowerCase().includes('социальн') || source.toLowerCase().includes('vk') || source.toLowerCase().includes('instagram')) {
+  } else if (sourceStr.includes('социальн') || sourceStr.includes('vk') || sourceStr.includes('instagram')) {
     touchPoint = 'Социальные сети';
   } else if (referer) {
     if (referer.includes('yandex.') || referer.includes('google.')) {
