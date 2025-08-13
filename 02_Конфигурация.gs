@@ -40,9 +40,9 @@ const CONFIG = {
   
   // ===== НАСТРОЙКИ GPT =====
   GPT: {
-    MODEL: 'gpt-4o',
-    FALLBACK_MODEL: 'gpt-4o-mini',
-    MAX_TOKENS: 2000,
+    MODEL: 'gpt-4o-mini',  // Используем более быструю и дешевую модель
+    FALLBACK_MODEL: 'gpt-3.5-turbo',
+    MAX_TOKENS: 1500,      // Уменьшаем токены
     TEMPERATURE: 0.3
   },
   

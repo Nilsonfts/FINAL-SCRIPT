@@ -174,7 +174,8 @@ function getRefusedDealsData_() {
 function analyzeRefusalReasonsWithGPT_(refusedDeals) {
   const apiKey = PropertiesService.getScriptProperties().getProperty('OPENAI_API_KEY');
   if (!apiKey) {
-    throw new Error('Не настроен API ключ OpenAI');
+    logWarning_('REFUSAL_ANALYSIS', 'API ключ OpenAI не настроен, используем локальный анализ');
+    return analyzeRefusalReasonsLocally_(refusedDeals);
   }
   
   // Группируем комментарии для анализа
@@ -194,22 +195,29 @@ function analyzeRefusalReasonsWithGPT_(refusedDeals) {
   }
   
   // Разбиваем на батчи для анализа (GPT имеет ограничения по токенам)
-  const batchSize = 20;
+  const batchSize = 10; // Уменьшаем размер батча с 20 до 10
   const batches = [];
   for (let i = 0; i < comments.length; i += batchSize) {
     batches.push(comments.slice(i, i + batchSize));
   }
   
+  // Ограничиваем количество батчей для избежания лимитов API
+  const maxBatches = Math.min(batches.length, 10); // Максимум 10 батчей
+  const processBatches = batches.slice(0, maxBatches);
+  
+  logInfo_('GPT_ANALYSIS', `Будет обработано ${processBatches.length} батчей из ${batches.length} (ограничение API)`);
+  
   let categorizedReasons = {};
   let insights = [];
   let recommendations = [];
+  let successfulBatches = 0;
   
   // Анализируем каждый батч
-  for (let i = 0; i < batches.length; i++) {
-    logInfo_('GPT_ANALYSIS', `Анализ батча ${i + 1} из ${batches.length}`);
+  for (let i = 0; i < processBatches.length; i++) {
+    logInfo_('GPT_ANALYSIS', `Анализ батча ${i + 1} из ${processBatches.length}`);
     
     try {
-      const batchResults = analyzeRefusalBatch_(apiKey, batches[i], refusedDeals);
+      const batchResults = analyzeRefusalBatch_(apiKey, processBatches[i], refusedDeals);
       
       // Объединяем результаты
       Object.keys(batchResults.categories).forEach(category => {
@@ -221,17 +229,109 @@ function analyzeRefusalReasonsWithGPT_(refusedDeals) {
       
       insights = insights.concat(batchResults.insights);
       recommendations = recommendations.concat(batchResults.recommendations);
+      successfulBatches++;
       
-      // Пауза между запросами
-      Utilities.sleep(1000);
+      // Увеличиваем паузу между запросами до 3 секунд
+      if (i < processBatches.length - 1) {
+        logInfo_('GPT_ANALYSIS', 'Пауза 3 секунды перед следующим запросом...');
+        Utilities.sleep(3000);
+      }
       
     } catch (error) {
       logError_('GPT_ANALYSIS', `Ошибка анализа батча ${i + 1}`, error);
+      
+      // Если получили 429 ошибку, делаем длинную паузу
+      if (error.toString().includes('429') || error.toString().includes('Rate limit')) {
+        logWarning_('GPT_ANALYSIS', 'Достигнут лимит API, пауза 10 секунд');
+        Utilities.sleep(10000);
+      }
       continue;
     }
   }
   
+  // Если ни один батч не удалось обработать, используем локальный анализ
+  if (successfulBatches === 0) {
+    logWarning_('GPT_ANALYSIS', 'Не удалось обработать ни одного батча через GPT, используем локальный анализ');
+    return analyzeRefusalReasonsLocally_(refusedDeals);
+  }
+  
+  logInfo_('GPT_ANALYSIS', `Успешно обработано ${successfulBatches} из ${processBatches.length} батчей`);
+  
   // Дополнительный анализ по каналам и времени
+  const channelAnalysis = analyzeRefusalsByChannel_(refusedDeals);
+  const monthlyTrends = analyzeRefusalTrends_(refusedDeals);
+  
+  return {
+    totalRefusals: refusedDeals.length,
+    categorizedReasons: categorizedReasons,
+    insights: insights,
+    recommendations: recommendations,
+    channelAnalysis: channelAnalysis,
+    monthlyTrends: monthlyTrends
+  };
+}
+
+/**
+ * Локальный анализ причин отказов без GPT
+ * @param {Array} refusedDeals - Массив отклонённых сделок
+ * @returns {Object} Результаты анализа
+ * @private
+ */
+function analyzeRefusalReasonsLocally_(refusedDeals) {
+  logInfo_('LOCAL_ANALYSIS', 'Выполняем локальный анализ причин отказов');
+  
+  const categorizedReasons = {
+    'Цена': [],
+    'Качество': [],
+    'Сроки': [],
+    'Коммуникация': [],
+    'Конкуренты': [],
+    'Личные причины': [],
+    'Технические': [],
+    'Недоверие': [],
+    'Прочее': []
+  };
+  
+  // Ключевые слова для категоризации
+  const keywords = {
+    'Цена': ['дорого', 'цена', 'стоимость', 'дешевле', 'бюджет', 'деньги', 'рубл'],
+    'Качество': ['качество', 'плохо', 'некачественно', 'брак', 'дефект'],
+    'Сроки': ['срок', 'время', 'долго', 'быстро', 'поздно', 'график'],
+    'Коммуникация': ['общение', 'связь', 'менеджер', 'консультант', 'звонок', 'отвеч'],
+    'Конкуренты': ['конкурент', 'другой', 'альтернатива', 'выбрал'],
+    'Личные причины': ['личн', 'семь', 'переехал', 'болезнь', 'изменил'],
+    'Технические': ['техническ', 'сайт', 'ошибк', 'проблем'],
+    'Недоверие': ['не доверяю', 'сомнени', 'подозрительно', 'мошенник']
+  };
+  
+  refusedDeals.forEach(deal => {
+    const comment = deal.refusalComment.toLowerCase();
+    let categorized = false;
+    
+    // Проверяем каждую категорию
+    Object.entries(keywords).forEach(([category, words]) => {
+      if (words.some(word => comment.includes(word))) {
+        categorizedReasons[category].push(deal.refusalComment);
+        categorized = true;
+      }
+    });
+    
+    // Если не удалось категоризировать, помещаем в "Прочее"
+    if (!categorized) {
+      categorizedReasons['Прочее'].push(deal.refusalComment);
+    }
+  });
+  
+  const insights = [
+    'Локальный анализ выполнен без использования GPT',
+    'Категоризация основана на ключевых словах'
+  ];
+  
+  const recommendations = [
+    'Рекомендуется настроить API ключ OpenAI для более точного анализа',
+    'Проверьте лимиты API OpenAI и попробуйте позже'
+  ];
+  
   const channelAnalysis = analyzeRefusalsByChannel_(refusedDeals);
   const monthlyTrends = analyzeRefusalTrends_(refusedDeals);
   
@@ -316,7 +416,13 @@ function analyzeRefusalBatch_(apiKey, commentsBatch, dealsData) {
   }
   
   try {
-    const analysisResult = JSON.parse(responseData.choices[0].message.content);
+    let responseContent = responseData.choices[0].message.content;
+    
+    // Убираем markdown форматирование если присутствует
+    responseContent = responseContent.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+    responseContent = responseContent.trim();
+    
+    const analysisResult = JSON.parse(responseContent);
     return analysisResult;
   } catch (parseError) {
     logError_('GPT_PARSE', 'Ошибка парсинга ответа GPT', parseError);
@@ -337,20 +443,30 @@ function analyzeRefusalBatch_(apiKey, commentsBatch, dealsData) {
  */
 function createGPTPromptForRefusalAnalysis_(comments) {
   const commentsText = comments
-    .slice(0, 20) // Ограничиваем количество для избежания превышения лимита токенов
+    .slice(0, 10) // Ограичиваем до 10 комментариев для экономии токенов
     .map((comment, index) => `${index + 1}. ${comment}`)
     .join('\n');
   
-  return `Проанализируй следующие причины отказов клиентов:
+  return `Проанализируй следующие причины отказов клиентов и верни ТОЛЬКО валидный JSON:
 
 ${commentsText}
 
-Задачи:
-1. Сгруппируй причины по логическим категориям
-2. Выяви основные проблемы и закономерности  
-3. Дай рекомендации по улучшению работы с клиентами
-
-Отвечай только в формате JSON без дополнительных объяснений.`;
+Верни результат строго в этом JSON формате без дополнительного текста:
+{
+  "categories": {
+    "Цена": [],
+    "Качество": [],
+    "Сроки": [],
+    "Коммуникация": [],
+    "Конкуренты": [],
+    "Личные причины": [],
+    "Технические": [],
+    "Недоверие": [],
+    "Прочее": []
+  },
+  "insights": [],
+  "recommendations": []
+}`;
 }
 
 /**
