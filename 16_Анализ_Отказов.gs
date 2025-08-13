@@ -72,15 +72,15 @@ function getRefusedDealsData_() {
   
   logInfo_('REFUSAL_ANALYSIS', `Анализируем ${rows.length} записей для поиска отказов`);
   
-  // Ищем колонку D (индекс 3) - это статус
-  const statusColumnIndex = 3; // Колонка D
+  // Ищем колонку "Статус" (точное название из ваших выгрузок AmoCRM)
+  const statusColumnIndex = findColumnIndex(headers, ['Статус']);
   
-  if (headers.length <= statusColumnIndex) {
-    logError_('REFUSAL_ANALYSIS', `Колонка D не найдена. Всего колонок: ${headers.length}`);
+  if (statusColumnIndex < 0) {
+    logError_('REFUSAL_ANALYSIS', 'Колонка "Статус" не найдена');
     return [];
   }
   
-  logInfo_('REFUSAL_ANALYSIS', `Анализируем колонку D: "${headers[statusColumnIndex]}"`);
+  logInfo_('REFUSAL_ANALYSIS', `Анализируем колонку "${headers[statusColumnIndex]}" (столбец ${String.fromCharCode(65 + statusColumnIndex)})`);
   
   // Точно фильтруем по статусу "Закрыто и не реализовано"
   const refusedDeals = rows.filter(row => {
@@ -91,14 +91,14 @@ function getRefusedDealsData_() {
   logInfo_('REFUSAL_ANALYSIS', `Найдено ${refusedDeals.length} отказанных сделок со статусом "Закрыто и не реализовано"`);
   
   if (refusedDeals.length === 0) {
-    // Проверяем, что вообще есть в колонке D
+    // Проверяем, что вообще есть в колонке "Статус"
     const statusStats = {};
     rows.forEach(row => {
       const status = String(row[statusColumnIndex] || 'Не указан');
       statusStats[status] = (statusStats[status] || 0) + 1;
     });
     
-    logWarning_('REFUSAL_ANALYSIS', 'НЕ НАЙДЕНО ОТКАЗОВ! Статистика в колонке D:');
+    logWarning_('REFUSAL_ANALYSIS', 'НЕ НАЙДЕНО ОТКАЗОВ! Статистика в колонке "Статус":');
     Object.entries(statusStats)
       .sort(([,a], [,b]) => b - a)
       .slice(0, 10)
@@ -109,54 +109,38 @@ function getRefusedDealsData_() {
     return [];
   }
   
-  // Определяем индексы нужных колонок
-  const dealIdIndex = findColumnIndex(headers, ['ID', 'Сделка.ID', 'Идентификатор']);
-  const dealNameIndex = findColumnIndex(headers, ['Название', 'Сделка.Название']);
-  const channelIndex = findColumnIndex(headers, ['utm_source', 'UTM_SOURCE', 'Сделка.utm_source', 'Источник']);
-  const createdDateIndex = findColumnIndex(headers, ['Дата создания', 'DATE', 'Сделка.Дата создания']);
-  const budgetIndex = findColumnIndex(headers, ['Бюджет', 'Сделка.Бюджет', 'Сумма', 'Сумма ₽']);
-  const managerIndex = findColumnIndex(headers, ['Ответственный', 'Кем создана', 'Менеджер']);
+  // Определяем индексы нужных колонок с учетом ТОЧНЫХ названий из ваших выгрузок
+  const dealIdIndex = findColumnIndex(headers, ['ID']); // Точно "ID"
+  const dealNameIndex = findColumnIndex(headers, ['Название']); // Точно "Название"  
+  const responsibleIndex = findColumnIndex(headers, ['Ответственный']); // Точно "Ответственный"
+  const channelIndex = findColumnIndex(headers, ['UTM_SOURCE', 'Источник']); // "UTM_SOURCE" или "Источник"
+  const createdDateIndex = findColumnIndex(headers, ['Дата создания']); // Точно "Дата создания"
+  const budgetIndex = findColumnIndex(headers, ['Бюджет']); // Точно "Бюджет"
+  const managerIndex = findColumnIndex(headers, ['Ответственный']);
   
-  // ПРИОРИТЕТНО ищем точный столбец X с причинами отказов
-  const refusalReasonColumnIndex = CONFIG.refusals.REFUSAL_REASON_COLUMN_INDEX || 23; // Столбец X (индекс 23)
+  // ПРИОРИТЕТНО ищем точную колонку "Причина отказа" из ваших выгрузок AmoCRM
+  let commentIndex = findColumnIndex(headers, [
+    'Причина отказа', // Точное название из обеих выгрузок AmoCRM
+    'Комментарий МОБ', // Альтернативный источник комментариев
+    'Примечания' // Дополнительные записи
+  ]);
   
-  let commentIndex = -1;
-  
-  // Проверяем, что столбец X существует и содержит нужные данные
-  if (headers.length > refusalReasonColumnIndex && 
-      String(headers[refusalReasonColumnIndex]).includes('Причина отказа')) {
-    commentIndex = refusalReasonColumnIndex;
-    logInfo_('REFUSAL_ANALYSIS', `✅ Используем ТОЧНЫЙ столбец X (индекс ${refusalReasonColumnIndex}): "${headers[refusalReasonColumnIndex]}"`);
+  if (commentIndex >= 0) {
+    logInfo_('REFUSAL_ANALYSIS', `✅ Найдена колонка с причинами отказов: "${headers[commentIndex]}" (столбец ${String.fromCharCode(65 + commentIndex)})`);
   } else {
-    // Если точный столбец не найден, ищем по названию
-    commentIndex = findColumnIndex(headers, [
-      'Сделка.Причина отказа (ОБ)',
-      'Причина отказа', 
-      'Комментарий', 
-      'Примечания', 
-      'Notes', 
-      'Comment',
-      'Отказ',
-      'Сделка.Комментарий'
-    ]);
-    
-    if (commentIndex >= 0) {
-      logInfo_('REFUSAL_ANALYSIS', `✅ Найден столбец с причинами отказов: "${headers[commentIndex]}" (индекс ${commentIndex})`);
-    } else {
-      logWarning_('REFUSAL_ANALYSIS', '⚠️ Специальный столбец с причинами отказов не найден!');
-    }
+    logWarning_('REFUSAL_ANALYSIS', '⚠️ Колонка "Причина отказа" не найдена! Проверьте структуру данных.');
   }
   
-  logInfo_('REFUSAL_ANALYSIS', `Найдены индексы колонок:
-    ID: ${dealIdIndex >= 0 ? headers[dealIdIndex] : 'не найден'}
-    Название: ${dealNameIndex >= 0 ? headers[dealNameIndex] : 'не найден'}
-    Канал: ${channelIndex >= 0 ? headers[channelIndex] : 'не найден'}
-    Дата: ${createdDateIndex >= 0 ? headers[createdDateIndex] : 'не найден'}
-    Бюджет: ${budgetIndex >= 0 ? headers[budgetIndex] : 'не найден'}
-    Менеджер: ${managerIndex >= 0 ? headers[managerIndex] : 'не найден'}
+  logInfo_('REFUSAL_ANALYSIS', `Найдены индексы колонок (точные названия из выгрузок AmoCRM):
+    ID: ${dealIdIndex >= 0 ? `"${headers[dealIdIndex]}" (столбец ${String.fromCharCode(65 + dealIdIndex)})` : 'не найден'}
+    Название: ${dealNameIndex >= 0 ? `"${headers[dealNameIndex]}" (столбец ${String.fromCharCode(65 + dealNameIndex)})` : 'не найден'}
+    Канал: ${channelIndex >= 0 ? `"${headers[channelIndex]}" (столбец ${String.fromCharCode(65 + channelIndex)})` : 'не найден'}
+    Дата создания: ${createdDateIndex >= 0 ? `"${headers[createdDateIndex]}" (столбец ${String.fromCharCode(65 + createdDateIndex)})` : 'не найден'}
+    Бюджет: ${budgetIndex >= 0 ? `"${headers[budgetIndex]}" (столбец ${String.fromCharCode(65 + budgetIndex)})` : 'не найден'}
+    Ответственный: ${managerIndex >= 0 ? `"${headers[managerIndex]}" (столбец ${String.fromCharCode(65 + managerIndex)})` : 'не найден'}
     Причины отказов: ${commentIndex >= 0 ? `"${headers[commentIndex]}" (столбец ${String.fromCharCode(65 + commentIndex)})` : 'не найден'}`);
   
-  // Формируем структурированные данные
+  // Формируем структурированные данные с учетом ваших точных колонок
   return refusedDeals.map((row, index) => {
     const dealId = dealIdIndex >= 0 ? String(row[dealIdIndex] || '') : `deal_${index}`;
     const dealName = dealNameIndex >= 0 ? String(row[dealNameIndex] || '') : 'Без названия';
@@ -166,44 +150,46 @@ function getRefusedDealsData_() {
     const manager = managerIndex >= 0 ? String(row[managerIndex] || 'Неназначен') : 'Неназначен';
     const status = 'Закрыто и не реализовано';
     
-    // Получаем причину отказа из точного столбца
+    // Получаем причину отказа из точной колонки "Причина отказа"
     let refusalComment = '';
     if (commentIndex >= 0 && row[commentIndex]) {
       refusalComment = String(row[commentIndex]).trim();
     }
     
-    // Если в основном столбце пусто, ищем альтернативные источники
+    // Если основная колонка пуста, ищем в альтернативных источниках по вашим данным
     if (!refusalComment || refusalComment === '') {
-      const textFields = [];
-      row.forEach((cell, idx) => {
-        const cellValue = String(cell || '').trim();
-        if (cellValue && 
-            cellValue.length > 10 && // Увеличиваем минимальную длину
-            cellValue !== status &&
-            cellValue !== dealName &&
-            cellValue !== dealId &&
-            !cellValue.match(/^\d+$/) && // не числа
-            !cellValue.match(/^\d{4}-\d{2}-\d{2}/) && // не даты
-            !cellValue.match(/^[+]?[\d\s\-\(\)]{7,15}$/) // не телефоны
-           ) {
-          // Проверяем, что это может быть причиной отказа
-          const normalized = cellValue.toLowerCase();
-          if (normalized.includes('отказ') || normalized.includes('причина') || 
-              normalized.includes('не подходит') || normalized.includes('дорого') ||
-              normalized.includes('конкурент') || cellValue.length > 20) {
-            textFields.push(cellValue);
+      // Ищем в других полях комментариев из ваших выгрузок
+      const alternativeSources = [
+        findColumnIndex(headers, ['Комментарий МОБ']), // Примечание менеджера отдела бронирования
+        findColumnIndex(headers, ['Примечания']), // Дополнительные записи
+        findColumnIndex(headers, ['Контакт.ФИО']) // Иногда причина может быть в имени
+      ];
+      
+      for (const altIndex of alternativeSources) {
+        if (altIndex >= 0 && row[altIndex]) {
+          const altValue = String(row[altIndex]).trim();
+          if (altValue && altValue.length > 5 && 
+              (altValue.toLowerCase().includes('отказ') || 
+               altValue.toLowerCase().includes('причина') ||
+               altValue.length > 20)) {
+            refusalComment = altValue;
+            break;
           }
         }
-      });
+      }
       
-      refusalComment = textFields.length > 0 ? 
-        textFields.slice(0, 1).join('') : // Берем только первое подходящее поле
-        'Причина не указана';
+      // Если все еще пусто
+      if (!refusalComment) {
+        refusalComment = 'Причина отказа не указана';
+      }
     }
     
-    // UTM данные
-    const utmSourceIndex = findColumnIndex(headers, ['utm_source', 'UTM_SOURCE', 'Сделка.utm_source']);
-    const utmCampaignIndex = findColumnIndex(headers, ['utm_campaign', 'UTM_CAMPAIGN', 'Сделка.utm_campaign']);
+    // UTM данные с точными названиями из ваших выгрузок
+    const utmSourceIndex = findColumnIndex(headers, ['UTM_SOURCE']);
+    const utmCampaignIndex = findColumnIndex(headers, ['UTM_CAMPAIGN']);
+    const utmMediumIndex = findColumnIndex(headers, ['UTM_MEDIUM']);
+    const utmTermIndex = findColumnIndex(headers, ['UTM_TERM']);
+    const utmContentIndex = findColumnIndex(headers, ['UTM_CONTENT']);
     
     return {
       dealId: dealId,
@@ -215,7 +201,10 @@ function getRefusedDealsData_() {
       status: status,
       refusalComment: refusalComment,
       utmSource: utmSourceIndex >= 0 ? String(row[utmSourceIndex] || '') : '',
-      utmCampaign: utmCampaignIndex >= 0 ? String(row[utmCampaignIndex] || '') : ''
+      utmCampaign: utmCampaignIndex >= 0 ? String(row[utmCampaignIndex] || '') : '',
+      utmMedium: utmMediumIndex >= 0 ? String(row[utmMediumIndex] || '') : '',
+      utmTerm: utmTermIndex >= 0 ? String(row[utmTermIndex] || '') : '',
+      utmContent: utmContentIndex >= 0 ? String(row[utmContentIndex] || '') : ''
     };
   }).filter(deal => deal.refusalComment && deal.refusalComment.trim().length > 0);
 }
@@ -893,7 +882,7 @@ function createEmptyRefusalReport_() {
 
 /**
  * Быстрая диагностика данных для анализа отказов
- * Запустите эту функцию для проверки данных
+ * Обновленная версия с учетом точных названий колонок из выгрузок AmoCRM
  */
 function diagnoseRefusalData() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
@@ -911,18 +900,25 @@ function diagnoseRefusalData() {
   console.log('📊 ДИАГНОСТИКА ДАННЫХ ДЛЯ АНАЛИЗА ОТКАЗОВ:');
   console.log(`📋 Всего строк: ${rows.length}`);
   console.log(`📋 Всего колонок: ${headers.length}`);
-  console.log(`📋 Колонка D (статус): "${headers[3]}" (индекс 3)`);
   
-  // Проверяем столбец X с причинами отказов
-  const reasonColumnIndex = 23; // Столбец X
-  if (headers.length > reasonColumnIndex) {
-    console.log(`📋 Колонка X (причины отказов): "${headers[reasonColumnIndex]}" (индекс ${reasonColumnIndex})`);
+  // Ищем колонку "Статус" (должна быть на позиции 4 в "Амо Выгрузка" или на позиции 5 в "Выгрузка Амо Полная")
+  const statusIndex = findColumnIndex(headers, ['Статус']);
+  if (statusIndex >= 0) {
+    console.log(`📋 Колонка "Статус": "${headers[statusIndex]}" (столбец ${String.fromCharCode(65 + statusIndex)})`);
+  } else {
+    console.log('❌ Колонка "Статус" не найдена!');
+  }
+  
+  // Ищем колонку "Причина отказа" 
+  const reasonIndex = findColumnIndex(headers, ['Причина отказа']);
+  if (reasonIndex >= 0) {
+    console.log(`📋 Колонка "Причина отказа": "${headers[reasonIndex]}" (столбец ${String.fromCharCode(65 + reasonIndex)})`);
     
-    // Статистика заполненности столбца X
+    // Статистика заполненности колонки "Причина отказа"
     let filledReasons = 0;
     let emptyReasons = 0;
     rows.forEach(row => {
-      const reason = String(row[reasonColumnIndex] || '').trim();
+      const reason = String(row[reasonIndex] || '').trim();
       if (reason && reason !== '') {
         filledReasons++;
       } else {
@@ -930,62 +926,96 @@ function diagnoseRefusalData() {
       }
     });
     
-    console.log(`📈 ЗАПОЛНЕННОСТЬ СТОЛБЦА X (причины отказов):`);
+    console.log(`📈 ЗАПОЛНЕННОСТЬ КОЛОНКИ "Причина отказа":`);
     console.log(`• Заполнено: ${filledReasons} (${((filledReasons / rows.length) * 100).toFixed(1)}%)`);
     console.log(`• Пусто: ${emptyReasons} (${((emptyReasons / rows.length) * 100).toFixed(1)}%)`);
   } else {
-    console.log(`❌ Колонка X не найдена! Максимальный индекс: ${headers.length - 1}`);
-  }
-  
-  // Статистика по колонке D (статусы)
-  const statusStats = {};
-  rows.forEach(row => {
-    const status = String(row[3] || 'Пустая').trim();
-    statusStats[status] = (statusStats[status] || 0) + 1;
-  });
-  
-  console.log('\n📈 СТАТИСТИКА СТАТУСОВ (Колонка D):');
-  Object.entries(statusStats)
-    .sort(([,a], [,b]) => b - a)
-    .slice(0, 10)
-    .forEach(([status, count]) => {
-      const percentage = ((count / rows.length) * 100).toFixed(1);
-      console.log(`• "${status}": ${count} (${percentage}%)`);
-    });
-  
-  const refusedCount = statusStats['Закрыто и не реализовано'] || 0;
-  console.log(`\n🎯 ОТКАЗАННЫЕ СДЕЛКИ: ${refusedCount}`);
-  
-  if (refusedCount > 0) {
-    console.log('✅ Данные для анализа найдены!');
+    console.log(`❌ Колонка "Причина отказа" не найдена!`);
     
-    // Проверяем качество причин отказов для отказанных сделок
-    let refusedWithReasons = 0;
-    let refusedWithoutReasons = 0;
+    // Ищем альтернативные источники
+    const altSources = [
+      'Комментарий МОБ',
+      'Примечания'
+    ];
     
-    rows.forEach(row => {
-      const status = String(row[3] || '').trim();
-      if (status === 'Закрыто и не реализовано') {
-        const reason = String(row[reasonColumnIndex] || '').trim();
-        if (reason && reason !== '' && reason.length > 5) {
-          refusedWithReasons++;
-        } else {
-          refusedWithoutReasons++;
-        }
+    console.log('🔍 Ищем альтернативные источники причин отказов:');
+    altSources.forEach(sourceName => {
+      const altIndex = findColumnIndex(headers, [sourceName]);
+      if (altIndex >= 0) {
+        console.log(`✅ Найдена "${sourceName}": столбец ${String.fromCharCode(65 + altIndex)}`);
+      } else {
+        console.log(`❌ "${sourceName}": не найдена`);
       }
     });
-    
-    console.log(`\n💬 КАЧЕСТВО ПРИЧИН ОТКАЗОВ:`);
-    console.log(`• С причинами: ${refusedWithReasons} (${((refusedWithReasons / refusedCount) * 100).toFixed(1)}%)`);
-    console.log(`• Без причин: ${refusedWithoutReasons} (${((refusedWithoutReasons / refusedCount) * 100).toFixed(1)}%)`);
-    
-    if (refusedWithReasons > 0) {
-      console.log(`\n🚀 ГОТОВО К АНАЛИЗУ: ${refusedWithReasons} сделок с причинами отказов`);
-    }
-  } else {
-    console.log('❌ Отказанные сделки не найдены!');
-    console.log('🔍 Проверьте, что в колонке D есть статус "Закрыто и не реализовано"');
   }
+  
+  // Статистика по статусам (если колонка найдена)
+  if (statusIndex >= 0) {
+    const statusStats = {};
+    rows.forEach(row => {
+      const status = String(row[statusIndex] || 'Не указан').trim();
+      statusStats[status] = (statusStats[status] || 0) + 1;
+    });
+    
+    console.log('\n📈 СТАТИСТИКА СТАТУСОВ:');
+    Object.entries(statusStats)
+      .sort(([,a], [,b]) => b - a)
+      .slice(0, 10)
+      .forEach(([status, count]) => {
+        const percentage = ((count / rows.length) * 100).toFixed(1);
+        console.log(`• "${status}": ${count} (${percentage}%)`);
+      });
+    
+    const refusedCount = statusStats['Закрыто и не реализовано'] || 0;
+    console.log(`\n🎯 ОТКАЗАННЫЕ СДЕЛКИ: ${refusedCount}`);
+    
+    if (refusedCount > 0 && reasonIndex >= 0) {
+      // Проверяем качество причин отказов для отказанных сделок
+      let refusedWithReasons = 0;
+      let refusedWithoutReasons = 0;
+      
+      rows.forEach(row => {
+        const status = String(row[statusIndex] || '').trim();
+        if (status === 'Закрыто и не реализовано') {
+          const reason = String(row[reasonIndex] || '').trim();
+          if (reason && reason !== '' && reason.length > 3) {
+            refusedWithReasons++;
+          } else {
+            refusedWithoutReasons++;
+          }
+        }
+      });
+      
+      console.log(`\n💬 КАЧЕСТВО ПРИЧИН ОТКАЗОВ:`);
+      console.log(`• С причинами: ${refusedWithReasons} (${((refusedWithReasons / refusedCount) * 100).toFixed(1)}%)`);
+      console.log(`• Без причин: ${refusedWithoutReasons} (${((refusedWithoutReasons / refusedCount) * 100).toFixed(1)}%)`);
+      
+      if (refusedWithReasons > 0) {
+        console.log(`\n🚀 ГОТОВО К АНАЛИЗУ: ${refusedWithReasons} сделок с причинами отказов`);
+      }
+    }
+  }
+  
+  // Проверяем основные поля из ваших выгрузок
+  console.log('\n🔍 ПРОВЕРКА ОСНОВНЫХ ПОЛЕЙ:');
+  const mainFields = [
+    'ID',
+    'Название', 
+    'Ответственный',
+    'Бюджет',
+    'Дата создания',
+    'UTM_SOURCE',
+    'Источник'
+  ];
+  
+  mainFields.forEach(fieldName => {
+    const fieldIndex = findColumnIndex(headers, [fieldName]);
+    if (fieldIndex >= 0) {
+      console.log(`✅ "${fieldName}": столбец ${String.fromCharCode(65 + fieldIndex)}`);
+    } else {
+      console.log(`❌ "${fieldName}": не найдено`);
+    }
+  });
 }
 
 /**
