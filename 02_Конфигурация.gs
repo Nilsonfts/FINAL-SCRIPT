@@ -54,7 +54,11 @@ const CONFIG = {
   
   // ===== ГЛОБАЛЬНЫЕ ЛИСТЫ ДЛЯ ВСЕХ МОДУЛЕЙ =====
   SHEETS: {
-    RAW_DATA: 'РАБОЧИЙ АМО',
+    // Основные рабочие листы
+    RAW_DATA: 'РАБОЧИЙ АМО',  // Основной сводный лист со всеми данными
+    WORKING_AMO: 'РАБОЧИЙ АМО', // Псевдоним для совместимости
+    
+    // Аналитические листы
     AMOCRM_SUMMARY: 'СВОДНАЯ АНАЛИТИКА AMOcrm',
     REFUSAL_ANALYSIS: 'Причина отказов',
     CHANNEL_ANALYSIS: 'СРАВНИТЕЛЬНЫЙ АНАЛИЗ',
@@ -66,7 +70,15 @@ const CONFIG = {
     MONTHLY_COMPARISON: 'Сравнение месяцев',
     CLIENT_ANALYSIS: 'Клиентская аналитика',
     BOOKING_ANALYSIS: 'Анализ броней',
-    BEAUTY_ANALYTICS: 'Beauty Analytics'
+    BEAUTY_ANALYTICS: 'Beauty Analytics',
+    
+    // Источники данных
+    AMO_EXPORT: 'Амо Выгрузка',
+    AMO_FULL_EXPORT: 'Выгрузка Амо Полная',
+    RESERVES_RP: 'Reserves RP',
+    GUESTS_RP: 'Guests RP',
+    WEBSITE_FORMS: 'Заявки с Сайта',
+    CALL_TRACKING: 'КоллТрекинг'
   },
   
   // ===== ГЛОБАЛЬНЫЕ АЛИАСЫ ЗАГОЛОВКОВ =====

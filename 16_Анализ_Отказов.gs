@@ -52,31 +52,38 @@ function analyzeRefusalReasons() {
 }
 
 /**
- * Получает данные отклонённых сделок для анализа - ИСПРАВЛЕННАЯ ВЕРСИЯ
+ * Получает данные отклонённых сделок для анализа - ОБНОВЛЕННАЯ ВЕРСИЯ
+ * Работает с новой структурой сводного листа РАБОЧИЙ АМО
  * @returns {Array} Массив отклонённых сделок
  * @private
  */
 function getRefusedDealsData_() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  const workingSheet = spreadsheet.getSheetByName('РАБОЧИЙ АМО');
+  let workingSheet = spreadsheet.getSheetByName('РАБОЧИЙ АМО');
   
   if (!workingSheet) {
-    throw new Error('Лист "РАБОЧИЙ АМО" не найден');
+    logWarning_('REFUSAL_ANALYSIS', 'Лист "РАБОЧИЙ АМО" не найден, создаем структуру...');
+    // Создаем структуру если не существует
+    createWorkingAmoStructure();
+    workingSheet = spreadsheet.getSheetByName('РАБОЧИЙ АМО');
   }
   
   const rawData = getSheetData_(workingSheet);
-  if (rawData.length <= 1) return [];
+  if (rawData.length <= 3) { // Учитываем заголовок + 2 строки оформления
+    logWarning_('REFUSAL_ANALYSIS', 'Нет данных в листе "РАБОЧИЙ АМО"');
+    return [];
+  }
   
-  const headers = rawData[0];
-  const rows = rawData.slice(1);
+  const headers = rawData[2]; // Заголовки в 3-й строке (индекс 2)
+  const rows = rawData.slice(3); // Данные начинаются с 4-й строки
   
   logInfo_('REFUSAL_ANALYSIS', `Анализируем ${rows.length} записей для поиска отказов`);
   
-  // Ищем колонку "Статус" (точное название из ваших выгрузок AmoCRM)
+  // Ищем колонку "Статус" в новой структуре
   const statusColumnIndex = findColumnIndex(headers, ['Статус']);
   
   if (statusColumnIndex < 0) {
-    logError_('REFUSAL_ANALYSIS', 'Колонка "Статус" не найдена');
+    logError_('REFUSAL_ANALYSIS', 'Колонка "Статус" не найдена в новой структуре');
     return [];
   }
   
@@ -109,29 +116,30 @@ function getRefusedDealsData_() {
     return [];
   }
   
-  // Определяем индексы нужных колонок с учетом ТОЧНЫХ названий из ваших выгрузок
-  const dealIdIndex = findColumnIndex(headers, ['ID']); // Точно "ID"
-  const dealNameIndex = findColumnIndex(headers, ['Название']); // Точно "Название"  
-  const responsibleIndex = findColumnIndex(headers, ['Ответственный']); // Точно "Ответственный"
-  const channelIndex = findColumnIndex(headers, ['UTM_SOURCE', 'Источник']); // "UTM_SOURCE" или "Источник"
-  const createdDateIndex = findColumnIndex(headers, ['Дата создания']); // Точно "Дата создания"
-  const budgetIndex = findColumnIndex(headers, ['Бюджет']); // Точно "Бюджет"
+  // Определяем индексы нужных колонок из новой структуры
+  const dealIdIndex = findColumnIndex(headers, ['ID']);
+  const dealNameIndex = findColumnIndex(headers, ['Название']);  
+  const responsibleIndex = findColumnIndex(headers, ['Ответственный']);
+  const channelIndex = findColumnIndex(headers, ['Источник', 'UTM_SOURCE']);
+  const createdDateIndex = findColumnIndex(headers, ['Дата создания']);
+  const budgetIndex = findColumnIndex(headers, ['Бюджет']);
   const managerIndex = findColumnIndex(headers, ['Ответственный']);
   
-  // ПРИОРИТЕТНО ищем точную колонку "Причина отказа" из ваших выгрузок AmoCRM
+  // ПРИОРИТЕТНО ищем точную колонку "Причина отказа" из новой структуры
   let commentIndex = findColumnIndex(headers, [
-    'Причина отказа', // Точное название из обеих выгрузок AmoCRM
-    'Комментарий МОБ', // Альтернативный источник комментариев
-    'Примечания' // Дополнительные записи
+    'Причина отказа', // Основная колонка
+    'Комментарий МОБ', // Альтернативный источник
+    'Примечания',      // Дополнительные записи
+    'Комментарий'      // Общий комментарий
   ]);
   
   if (commentIndex >= 0) {
     logInfo_('REFUSAL_ANALYSIS', `✅ Найдена колонка с причинами отказов: "${headers[commentIndex]}" (столбец ${String.fromCharCode(65 + commentIndex)})`);
   } else {
-    logWarning_('REFUSAL_ANALYSIS', '⚠️ Колонка "Причина отказа" не найдена! Проверьте структуру данных.');
+    logWarning_('REFUSAL_ANALYSIS', '⚠️ Колонка "Причина отказа" не найдена в новой структуре!');
   }
   
-  logInfo_('REFUSAL_ANALYSIS', `Найдены индексы колонок (точные названия из выгрузок AmoCRM):
+  logInfo_('REFUSAL_ANALYSIS', `Найдены индексы колонок в новой структуре:
     ID: ${dealIdIndex >= 0 ? `"${headers[dealIdIndex]}" (столбец ${String.fromCharCode(65 + dealIdIndex)})` : 'не найден'}
     Название: ${dealNameIndex >= 0 ? `"${headers[dealNameIndex]}" (столбец ${String.fromCharCode(65 + dealNameIndex)})` : 'не найден'}
     Канал: ${channelIndex >= 0 ? `"${headers[channelIndex]}" (столбец ${String.fromCharCode(65 + channelIndex)})` : 'не найден'}
@@ -140,7 +148,7 @@ function getRefusedDealsData_() {
     Ответственный: ${managerIndex >= 0 ? `"${headers[managerIndex]}" (столбец ${String.fromCharCode(65 + managerIndex)})` : 'не найден'}
     Причины отказов: ${commentIndex >= 0 ? `"${headers[commentIndex]}" (столбец ${String.fromCharCode(65 + commentIndex)})` : 'не найден'}`);
   
-  // Формируем структурированные данные с учетом ваших точных колонок
+  // Формируем структурированные данные из новой структуры
   return refusedDeals.map((row, index) => {
     const dealId = dealIdIndex >= 0 ? String(row[dealIdIndex] || '') : `deal_${index}`;
     const dealName = dealNameIndex >= 0 ? String(row[dealNameIndex] || '') : 'Без названия';
@@ -150,18 +158,17 @@ function getRefusedDealsData_() {
     const manager = managerIndex >= 0 ? String(row[managerIndex] || 'Неназначен') : 'Неназначен';
     const status = 'Закрыто и не реализовано';
     
-    // Получаем причину отказа из точной колонки "Причина отказа"
+    // Получаем причину отказа из новой структуры
     let refusalComment = '';
     if (commentIndex >= 0 && row[commentIndex]) {
       refusalComment = String(row[commentIndex]).trim();
     }
     
-    // Если основная колонка пуста, ищем в альтернативных источниках по вашим данным
+    // Если основная колонка пуста, ищем в альтернативных источниках
     if (!refusalComment || refusalComment === '') {
-      // Ищем в других полях комментариев из ваших выгрузок
       const alternativeSources = [
-        findColumnIndex(headers, ['Комментарий МОБ']), // Примечание менеджера отдела бронирования
-        findColumnIndex(headers, ['Примечания']), // Дополнительные записи
+        findColumnIndex(headers, ['Комментарий МОБ']),
+        findColumnIndex(headers, ['Примечания']),
         findColumnIndex(headers, ['Контакт.ФИО']) // Иногда причина может быть в имени
       ];
       
@@ -178,13 +185,12 @@ function getRefusedDealsData_() {
         }
       }
       
-      // Если все еще пусто
       if (!refusalComment) {
         refusalComment = 'Причина отказа не указана';
       }
     }
     
-    // UTM данные с точными названиями из ваших выгрузок
+    // UTM данные из новой структуры
     const utmSourceIndex = findColumnIndex(headers, ['UTM_SOURCE']);
     const utmCampaignIndex = findColumnIndex(headers, ['UTM_CAMPAIGN']);
     const utmMediumIndex = findColumnIndex(headers, ['UTM_MEDIUM']);
@@ -882,75 +888,57 @@ function createEmptyRefusalReport_() {
 
 /**
  * Быстрая диагностика данных для анализа отказов
- * Обновленная версия с учетом точных названий колонок из выгрузок AmoCRM
+ * Обновленная версия для новой структуры сводного листа РАБОЧИЙ АМО
  */
 function diagnoseRefusalData() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  const workingSheet = spreadsheet.getSheetByName('РАБОЧИЙ АМО');
+  let workingSheet = spreadsheet.getSheetByName('РАБОЧИЙ АМО');
   
   if (!workingSheet) {
     console.log('❌ Лист "РАБОЧИЙ АМО" не найден');
+    console.log('🔧 Используйте createWorkingAmoStructure() для создания структуры');
     return;
   }
   
   const data = workingSheet.getDataRange().getValues();
-  const headers = data[0];
-  const rows = data.slice(1);
   
-  console.log('📊 ДИАГНОСТИКА ДАННЫХ ДЛЯ АНАЛИЗА ОТКАЗОВ:');
-  console.log(`📋 Всего строк: ${rows.length}`);
-  console.log(`📋 Всего колонок: ${headers.length}`);
+  // Проверяем структуру листа (заголовки должны быть в 3-й строке)
+  if (data.length < 3) {
+    console.log('❌ Неправильная структура листа "РАБОЧИЙ АМО"');
+    console.log('🔧 Лист должен содержать: 1) титул, 2) дату обновления, 3) заголовки');
+    return;
+  }
   
-  // Ищем колонку "Статус" (должна быть на позиции 4 в "Амо Выгрузка" или на позиции 5 в "Выгрузка Амо Полная")
+  const headers = data[2]; // Заголовки в 3-й строке (индекс 2)
+  const rows = data.slice(3); // Данные начинаются с 4-й строки
+  
+  console.log('📊 ДИАГНОСТИКА НОВОЙ СТРУКТУРЫ РАБОЧИЙ АМО:');
+  console.log(`📋 Всего строк данных: ${rows.length}`);
+  console.log(`📋 Всего столбцов: ${headers.length}`);
+  
+  // Проверяем ключевые поля новой структуры
+  console.log('\n🔍 ПРОВЕРКА КЛЮЧЕВЫХ ПОЛЕЙ:');
+  const keyFields = [
+    'ID', 'Название', 'Статус', 'Причина отказа', 
+    'Контакт.ФИО', 'Контакт.Телефон', 'Источник',
+    'UTM_SOURCE', 'Бюджет', 'Дата создания'
+  ];
+  
+  keyFields.forEach(field => {
+    const fieldIndex = findColumnIndex(headers, [field]);
+    if (fieldIndex >= 0) {
+      console.log(`✅ "${field}": столбец ${String.fromCharCode(65 + fieldIndex)} ("${headers[fieldIndex]}")`);
+    } else {
+      console.log(`❌ "${field}": не найдено`);
+    }
+  });
+  
+  // Ищем колонку "Статус" для анализа отказов
   const statusIndex = findColumnIndex(headers, ['Статус']);
   if (statusIndex >= 0) {
-    console.log(`📋 Колонка "Статус": "${headers[statusIndex]}" (столбец ${String.fromCharCode(65 + statusIndex)})`);
-  } else {
-    console.log('❌ Колонка "Статус" не найдена!');
-  }
-  
-  // Ищем колонку "Причина отказа" 
-  const reasonIndex = findColumnIndex(headers, ['Причина отказа']);
-  if (reasonIndex >= 0) {
-    console.log(`📋 Колонка "Причина отказа": "${headers[reasonIndex]}" (столбец ${String.fromCharCode(65 + reasonIndex)})`);
+    console.log(`\n📋 Колонка "Статус": "${headers[statusIndex]}" (столбец ${String.fromCharCode(65 + statusIndex)})`);
     
-    // Статистика заполненности колонки "Причина отказа"
-    let filledReasons = 0;
-    let emptyReasons = 0;
-    rows.forEach(row => {
-      const reason = String(row[reasonIndex] || '').trim();
-      if (reason && reason !== '') {
-        filledReasons++;
-      } else {
-        emptyReasons++;
-      }
-    });
-    
-    console.log(`📈 ЗАПОЛНЕННОСТЬ КОЛОНКИ "Причина отказа":`);
-    console.log(`• Заполнено: ${filledReasons} (${((filledReasons / rows.length) * 100).toFixed(1)}%)`);
-    console.log(`• Пусто: ${emptyReasons} (${((emptyReasons / rows.length) * 100).toFixed(1)}%)`);
-  } else {
-    console.log(`❌ Колонка "Причина отказа" не найдена!`);
-    
-    // Ищем альтернативные источники
-    const altSources = [
-      'Комментарий МОБ',
-      'Примечания'
-    ];
-    
-    console.log('🔍 Ищем альтернативные источники причин отказов:');
-    altSources.forEach(sourceName => {
-      const altIndex = findColumnIndex(headers, [sourceName]);
-      if (altIndex >= 0) {
-        console.log(`✅ Найдена "${sourceName}": столбец ${String.fromCharCode(65 + altIndex)}`);
-      } else {
-        console.log(`❌ "${sourceName}": не найдена`);
-      }
-    });
-  }
-  
-  // Статистика по статусам (если колонка найдена)
-  if (statusIndex >= 0) {
+    // Статистика по статусам
     const statusStats = {};
     rows.forEach(row => {
       const status = String(row[statusIndex] || 'Не указан').trim();
@@ -969,8 +957,12 @@ function diagnoseRefusalData() {
     const refusedCount = statusStats['Закрыто и не реализовано'] || 0;
     console.log(`\n🎯 ОТКАЗАННЫЕ СДЕЛКИ: ${refusedCount}`);
     
+    // Анализ причин отказов
+    const reasonIndex = findColumnIndex(headers, ['Причина отказа']);
     if (refusedCount > 0 && reasonIndex >= 0) {
-      // Проверяем качество причин отказов для отказанных сделок
+      console.log(`\n💬 АНАЛИЗ ПРИЧИН ОТКАЗОВ:`);
+      console.log(`📋 Колонка "Причина отказа": "${headers[reasonIndex]}" (столбец ${String.fromCharCode(65 + reasonIndex)})`);
+      
       let refusedWithReasons = 0;
       let refusedWithoutReasons = 0;
       
@@ -986,36 +978,71 @@ function diagnoseRefusalData() {
         }
       });
       
-      console.log(`\n💬 КАЧЕСТВО ПРИЧИН ОТКАЗОВ:`);
       console.log(`• С причинами: ${refusedWithReasons} (${((refusedWithReasons / refusedCount) * 100).toFixed(1)}%)`);
       console.log(`• Без причин: ${refusedWithoutReasons} (${((refusedWithoutReasons / refusedCount) * 100).toFixed(1)}%)`);
       
       if (refusedWithReasons > 0) {
-        console.log(`\n🚀 ГОТОВО К АНАЛИЗУ: ${refusedWithReasons} сделок с причинами отказов`);
+        console.log(`\n🚀 ГОТОВО К GPT-АНАЛИЗУ: ${refusedWithReasons} сделок с причинами отказов`);
       }
+      
+    } else if (reasonIndex < 0) {
+      console.log(`\n❌ Колонка "Причина отказа" не найдена!`);
+      
+      // Ищем альтернативные источники
+      const altSources = ['Комментарий МОБ', 'Примечания', 'Комментарий'];
+      console.log('🔍 Поиск альтернативных источников причин отказов:');
+      altSources.forEach(sourceName => {
+        const altIndex = findColumnIndex(headers, [sourceName]);
+        if (altIndex >= 0) {
+          console.log(`✅ Найдена "${sourceName}": столбец ${String.fromCharCode(65 + altIndex)}`);
+        } else {
+          console.log(`❌ "${sourceName}": не найдена`);
+        }
+      });
     }
+  } else {
+    console.log('\n❌ Колонка "Статус" не найдена в новой структуре!');
   }
   
-  // Проверяем основные поля из ваших выгрузок
-  console.log('\n🔍 ПРОВЕРКА ОСНОВНЫХ ПОЛЕЙ:');
-  const mainFields = [
-    'ID',
-    'Название', 
-    'Ответственный',
-    'Бюджет',
-    'Дата создания',
-    'UTM_SOURCE',
-    'Источник'
-  ];
-  
-  mainFields.forEach(fieldName => {
-    const fieldIndex = findColumnIndex(headers, [fieldName]);
-    if (fieldIndex >= 0) {
-      console.log(`✅ "${fieldName}": столбец ${String.fromCharCode(65 + fieldIndex)}`);
+  // Проверка UTM полей
+  console.log('\n🏷️ ПРОВЕРКА UTM ПОЛЕЙ:');
+  const utmFields = ['UTM_SOURCE', 'UTM_MEDIUM', 'UTM_CAMPAIGN', 'UTM_TERM', 'UTM_CONTENT'];
+  utmFields.forEach(utmField => {
+    const utmIndex = findColumnIndex(headers, [utmField]);
+    if (utmIndex >= 0) {
+      // Считаем заполненность
+      let filled = 0;
+      rows.forEach(row => {
+        if (row[utmIndex] && String(row[utmIndex]).trim() !== '') {
+          filled++;
+        }
+      });
+      const percentage = rows.length > 0 ? ((filled / rows.length) * 100).toFixed(1) : '0';
+      console.log(`✅ ${utmField}: ${filled}/${rows.length} (${percentage}%)`);
     } else {
-      console.log(`❌ "${fieldName}": не найдено`);
+      console.log(`❌ ${utmField}: не найдено`);
     }
   });
+  
+  // Общая статистика заполненности
+  console.log('\n📊 ОБЩАЯ СТАТИСТИКА ЗАПОЛНЕННОСТИ:');
+  let totalFields = 0;
+  let filledFields = 0;
+  
+  rows.forEach(row => {
+    row.forEach(cell => {
+      totalFields++;
+      if (cell && String(cell).trim() !== '') {
+        filledFields++;
+      }
+    });
+  });
+  
+  const overallFillRate = totalFields > 0 ? ((filledFields / totalFields) * 100).toFixed(1) : '0';
+  console.log(`📈 Общая заполненность данных: ${overallFillRate}%`);
+  console.log(`📋 Заполнено ячеек: ${filledFields} из ${totalFields}`);
+  
+  console.log('\n✅ Диагностика новой структуры РАБОЧИЙ АМО завершена');
 }
 
 /**
