@@ -547,5 +547,5 @@ function isProposalStatus(status) {
 }
 
 function getFormattedDate() {
-  return Utilities.formatDate(new Date(), 'GMT+3', 'yyyy-MM-dd_HH-mm');
+  return Utilities.formatDate(new Date(), CONFIG.FORMATTING.TIMEZONE, 'yyyy-MM-dd_HH-mm');
 }

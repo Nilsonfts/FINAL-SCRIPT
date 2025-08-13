@@ -718,7 +718,7 @@ function optimizeSheets() {
 function createSystemBackup() {
   try {
     const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-    const backupName = `AMO_Analytics_Backup_${Utilities.formatDate(new Date(), 'GMT+3', 'yyyy-MM-dd_HH-mm')}`;
+    const backupName = `AMO_Analytics_Backup_${Utilities.formatDate(new Date(), CONFIG.FORMATTING.TIMEZONE, 'yyyy-MM-dd_HH-mm')}`;
     
     // Создаем копию текущей таблицы
     const backup = DriveApp.getFileById(spreadsheet.getId()).makeCopy(backupName);
