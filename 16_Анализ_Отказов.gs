@@ -24,7 +24,7 @@ function analyzeRefusalReasons() {
     }
     
     // Анализируем причины с помощью GPT
-    const analysisResults = await analyzeRefusalReasonsWithGPT_(refusedDeals);
+    const analysisResults = analyzeRefusalReasonsWithGPT_(refusedDeals);
     
     // Создаём отчёт
     const sheet = getOrCreateSheet_(CONFIG.SHEETS.REFUSAL_ANALYSIS);
@@ -164,7 +164,6 @@ function getRefusedDealsData_() {
     };
   }).filter(deal => deal.refusalComment && deal.refusalComment.trim().length > 0);
 }
-}
 
 /**
  * Анализирует причины отказов с помощью GPT
@@ -172,7 +171,7 @@ function getRefusedDealsData_() {
  * @returns {Object} Результаты анализа
  * @private
  */
-async function analyzeRefusalReasonsWithGPT_(refusedDeals) {
+function analyzeRefusalReasonsWithGPT_(refusedDeals) {
   const apiKey = PropertiesService.getScriptProperties().getProperty('OPENAI_API_KEY');
   if (!apiKey) {
     throw new Error('Не настроен API ключ OpenAI');
@@ -210,7 +209,7 @@ async function analyzeRefusalReasonsWithGPT_(refusedDeals) {
     logInfo_('GPT_ANALYSIS', `Анализ батча ${i + 1} из ${batches.length}`);
     
     try {
-      const batchResults = await analyzeRefusalBatch_(apiKey, batches[i], refusedDeals);
+      const batchResults = analyzeRefusalBatch_(apiKey, batches[i], refusedDeals);
       
       // Объединяем результаты
       Object.keys(batchResults.categories).forEach(category => {
@@ -254,7 +253,7 @@ async function analyzeRefusalReasonsWithGPT_(refusedDeals) {
  * @returns {Object} Результаты анализа батча
  * @private
  */
-async function analyzeRefusalBatch_(apiKey, commentsBatch, dealsData) {
+function analyzeRefusalBatch_(apiKey, commentsBatch, dealsData) {
   const prompt = createGPTPromptForRefusalAnalysis_(commentsBatch);
   
   const payload = {
@@ -583,21 +582,20 @@ function addRefusalAnalysisCharts_(sheet, analysisResults) {
         .map(([category, reasons]) => [category, reasons.length])
     );
     
-    const categoriesChart = sheet.insertChart(
-      Charts.newPieChart()
-        .setDataRange(sheet.getRange(1, 6, categoriesChartData.length, 2))
-        .setOption('title', 'Распределение причин отказов по категориям')
-        .setOption('titleTextStyle', { fontSize: 14, bold: true })
-        .setOption('legend', { position: 'right' })
-        .setOption('chartArea', { width: '80%', height: '80%' })
-        .setPosition(3, 6, 0, 0)
-        .setOption('width', 500)
-        .setOption('height', 350)
-        .build()
-    );
-    
     // Записываем данные для диаграммы
     sheet.getRange(1, 6, categoriesChartData.length, 2).setValues(categoriesChartData);
+    
+    try {
+      const categoriesChart = createChart_(sheet, 'pie', categoriesChartData, {
+        title: 'Распределение причин отказов по категориям',
+        position: { row: 3, column: 6 },
+        width: 500,
+        height: 350
+      });
+    } catch (chartError) {
+      logWarning_('CHARTS', 'Ошибка создания диаграммы категорий', chartError);
+    }
+  }
   }
   
   // 2. Столбчатая диаграмма отказов по каналам
@@ -609,22 +607,20 @@ function addRefusalAnalysisCharts_(sheet, analysisResults) {
         .map(([channel, stats]) => [channel, stats.count])
     );
     
-    const channelsChart = sheet.insertChart(
-      Charts.newColumnChart()
-        .setDataRange(sheet.getRange(1, 9, channelsChartData.length, 2))
-        .setOption('title', 'Количество отказов по каналам')
-        .setOption('titleTextStyle', { fontSize: 14, bold: true })
-        .setOption('legend', { position: 'none' })
-        .setOption('hAxis', { title: 'Канал', slantedText: true })
-        .setOption('vAxis', { title: 'Количество отказов' })
-        .setPosition(3, 12, 0, 0)
-        .setOption('width', 500)
-        .setOption('height', 350)
-        .build()
-    );
-    
     // Записываем данные для диаграммы
     sheet.getRange(1, 9, channelsChartData.length, 2).setValues(channelsChartData);
+    
+    try {
+      const channelsChart = createChart_(sheet, 'column', channelsChartData, {
+        title: 'Количество отказов по каналам',
+        position: { row: 3, column: 12 },
+        width: 500,
+        height: 350
+      });
+    } catch (chartError) {
+      logWarning_('CHARTS', 'Ошибка создания диаграммы каналов', chartError);
+    }
+  }
   }
   
   // 3. Линейная диаграмма трендов по месяцам
@@ -633,22 +629,20 @@ function addRefusalAnalysisCharts_(sheet, analysisResults) {
       analysisResults.monthlyTrends.map(item => [item.month, item.count])
     );
     
-    const trendsChart = sheet.insertChart(
-      Charts.newLineChart()
-        .setDataRange(sheet.getRange(1, 12, trendsChartData.length, 2))
-        .setOption('title', 'Динамика отказов по месяцам')
-        .setOption('titleTextStyle', { fontSize: 14, bold: true })
-        .setOption('legend', { position: 'none' })
-        .setOption('hAxis', { title: 'Месяц', slantedText: true })
-        .setOption('vAxis', { title: 'Количество отказов' })
-        .setPosition(25, 6, 0, 0)
-        .setOption('width', 600)
-        .setOption('height', 350)
-        .build()
-    );
-    
     // Записываем данные для диаграммы
     sheet.getRange(1, 12, trendsChartData.length, 2).setValues(trendsChartData);
+    
+    try {
+      const trendsChart = createChart_(sheet, 'line', trendsChartData, {
+        title: 'Динамика отказов по месяцам',
+        position: { row: 25, column: 6 },
+        width: 600,
+        height: 350
+      });
+    } catch (chartError) {
+      logWarning_('CHARTS', 'Ошибка создания диаграммы трендов', chartError);
+    }
+  }
   }
 }
 
