@@ -36,34 +36,24 @@ function initializeSystem() {
     
     logInfo_('SYSTEM_INIT', 'Система успешно инициализирована');
     
-    // Показываем сообщение пользователю (только если доступен UI)
-    try {
-      SpreadsheetApp.getUi().alert(
-        'Система инициализирована!',
-        'Все модули настроены и готовы к работе.\n\n' +
-        'Автоматическая синхронизация данных настроена на каждые 15 минут.\n' +
-        'Аналитические отчёты обновляются ежедневно в 08:00.\n\n' +
-        'Используйте меню "🔄 Аналитика" для ручного управления.',
-        SpreadsheetApp.getUi().ButtonSet.OK
-      );
-    } catch (uiError) {
-      // UI недоступен (например, вызов из триггера) - просто логируем
-      logInfo_('SYSTEM_INIT', 'UI недоступен, сообщение не показано');
-    }
+    // Показываем сообщение пользователю
+    SpreadsheetApp.getUi().alert(
+      'Система инициализирована!',
+      'Все модули настроены и готовы к работе.\n\n' +
+      'Автоматическая синхронизация данных настроена на каждые 15 минут.\n' +
+      'Аналитические отчёты обновляются ежедневно в 08:00.\n\n' +
+      'Используйте меню "🔄 Аналитика" для ручного управления.',
+      SpreadsheetApp.getUi().ButtonSet.OK
+    );
     
   } catch (error) {
     logError_('SYSTEM_INIT', 'Критическая ошибка инициализации системы', error);
     
-    try {
-      SpreadsheetApp.getUi().alert(
-        'Ошибка инициализации!',
-        `Произошла ошибка при инициализации системы:\n\n${error.message}\n\nПроверьте настройки конфигурации и попробуйте снова.`,
-        SpreadsheetApp.getUi().ButtonSet.OK
-      );
-    } catch (uiError) {
-      // UI недоступен - логируем ошибку
-      logError_('SYSTEM_INIT', 'UI недоступен для показа ошибки', uiError);
-    }
+    SpreadsheetApp.getUi().alert(
+      'Ошибка инициализации!',
+      `Произошла ошибка при инициализации системы:\n\n${error.message}\n\nПроверьте настройки конфигурации и попробуйте снова.`,
+      SpreadsheetApp.getUi().ButtonSet.OK
+    );
     
     throw error;
   }
@@ -73,17 +63,26 @@ function initializeSystem() {
  * Основная функция обновления всей аналитики
  * Вызывается ежедневно по расписанию
  */
+/**
+ * Основная функция полного обновления аналитики
+ * Интегрированная версия с продвинутой логикой обработки данных
+ */
 function runFullAnalyticsUpdate() {
   try {
     logInfo_('FULL_UPDATE', 'Начало полного обновления аналитики');
     const startTime = new Date();
     
-    // 1. Синхронизация данных
-    logInfo_('FULL_UPDATE', 'Синхронизация данных из внешних источников');
-    const syncResults = syncAllData();
+    // 1. Инициализация рабочих данных
+    logInfo_('FULL_UPDATE', 'Инициализация рабочих структур данных');
+    const workingData = initializeWorkingData_();
     
-    // 2. Обновление всех аналитических модулей
+    // 2. Загрузка и обогащение данных
+    logInfo_('FULL_UPDATE', 'Загрузка данных из всех источников');
+    const enrichedData = loadAndEnrichAllData_(workingData);
+    
+    // 3. Обновление всех аналитических модулей
     const updateResults = {
+      data_processing: false,
       amocrm_summary: false,
       refusal_analysis: false,
       channel_analysis: false,
@@ -97,6 +96,15 @@ function runFullAnalyticsUpdate() {
       booking_analysis: false,
       beauty_analytics: false
     };
+    
+    // Основная обработка данных (интегрированная логика из buildWorkingFromFive)
+    try {
+      logInfo_('FULL_UPDATE', 'Обработка и нормализация данных');
+      processAdvancedDataLogic_(enrichedData);
+      updateResults.data_processing = true;
+    } catch (error) {
+      logError_('FULL_UPDATE', 'Ошибка обработки данных', error);
+    }
     
     // AmoCRM сводка
     try {
@@ -202,49 +210,40 @@ function runFullAnalyticsUpdate() {
  * Создаёт пользовательское меню
  */
 function createCustomMenu_() {
-  try {
-    const ui = SpreadsheetApp.getUi();
-    
-    ui.createMenu('🔄 Аналитика')
-      .addSubMenu(ui.createMenu('📊 Обновление данных')
-        .addItem('🔄 Синхронизация всех данных', 'syncAllData')
-        .addItem('💼 Только AmoCRM', 'syncAmoCrmDataOnly')
-        .addItem('📋 Только формы сайта', 'syncWebFormsDataOnly')
-        .addItem('☎️ Только колл-трекинг', 'syncCallTrackingDataOnly')
-        .addSeparator()
-        .addItem('🎯 Яндекс.Метрика', 'syncYandexMetricaDataOnly'))
-      
-      .addSubMenu(ui.createMenu('📈 Аналитические отчёты')
-        .addItem('🏢 Сводка AmoCRM', 'updateAmoCrmSummary')
-        .addItem('❌ Анализ отказов', 'analyzeRefusalReasons')
-        .addItem('🎯 Каналы привлечения', 'analyzeChannelPerformance')
-        .addItem('👥 Лиды по каналам', 'analyzeLeadsByChannels')
-        .addItem('🔗 UTM аналитика', 'analyzeUtmPerformance')
-        .addItem('👋 Первые касания', 'analyzeFirstTouchAttribution')
-        .addSeparator()
-        .addItem('📅 Ежедневная статистика', 'updateDailyStatistics')
-        .addItem('📊 Обновить все отчёты', 'runFullAnalyticsUpdate'))
-      
-      .addSubMenu(ui.createMenu('⚙️ Настройки')
-        .addItem('🎨 Применить оформление', 'applySystemWideFormatting_')
-        .addItem('✨ Красивое оформление РАБОЧИЙ АМО', 'applyBeautifulStyleToWorkingAmo')
-        .addItem('🔄 Пересоздать триггеры', 'setupTriggers_')
-        .addItem('📧 Тест email уведомлений', 'testEmailNotifications')
-        .addSeparator()
-        .addItem('🗑️ Очистить кэш', 'clearAllCache')
-        .addItem('📋 Показать логи', 'showSystemLogs'))
-      
+  const ui = SpreadsheetApp.getUi();
+  
+  ui.createMenu('🔄 Аналитика')
+    .addSubMenu(ui.createMenu('📊 Обновление данных')
+      .addItem('🔄 Синхронизация всех данных', 'syncAllData')
+      .addItem('💼 Только AmoCRM', 'syncAmoCrmDataOnly')
+      .addItem('📋 Только формы сайта', 'syncWebFormsDataOnly')
+      .addItem('☎️ Только колл-трекинг', 'syncCallTrackingDataOnly')
       .addSeparator()
-      .addItem('🚀 Инициализация системы', 'initializeSystem')
-      .addItem('ℹ️ О системе', 'showSystemInfo')
-      .addToUi();
-      
-    logInfo_('MENU', 'Пользовательское меню создано');
+      .addItem('🎯 Яндекс.Метрика', 'syncYandexMetricaDataOnly'))
     
-  } catch (uiError) {
-    // UI недоступен (например, вызов из триггера) - пропускаем создание меню
-    logInfo_('MENU', 'UI недоступен для создания меню - пропуск');
-  }
+    .addSubMenu(ui.createMenu('📈 Аналитические отчёты')
+      .addItem('🏢 Сводка AmoCRM', 'updateAmoCrmSummary')
+      .addItem('❌ Анализ отказов', 'analyzeRefusalReasons')
+      .addItem('🎯 Каналы привлечения', 'analyzeChannelPerformance')
+      .addItem('👥 Лиды по каналам', 'analyzeLeadsByChannels')
+      .addItem('🔗 UTM аналитика', 'analyzeUtmPerformance')
+      .addItem('👋 Первые касания', 'analyzeFirstTouchAttribution')
+      .addSeparator()
+      .addItem('📅 Ежедневная статистика', 'updateDailyStatistics')
+      .addItem('📊 Обновить все отчёты', 'runFullAnalyticsUpdate'))
+    
+    .addSubMenu(ui.createMenu('⚙️ Настройки')
+      .addItem('🎨 Применить оформление', 'applySystemWideFormatting_')
+      .addItem('🔄 Пересоздать триггеры', 'setupTriggers_')
+      .addItem('📧 Тест email уведомлений', 'testEmailNotifications')
+      .addSeparator()
+      .addItem('🗑️ Очистить кэш', 'clearAllCache')
+      .addItem('📋 Показать логи', 'showSystemLogs'))
+    
+    .addSeparator()
+    .addItem('🚀 Инициализация системы', 'initializeSystem')
+    .addItem('ℹ️ О системе', 'showSystemInfo')
+    .addToUi();
 }
 
 /**
@@ -284,44 +283,9 @@ function validateConfiguration_() {
  * @private
  */
 function createAllSheets_() {
-  // Создаём основные листы данных
-  const dataSheets = [
-    'Амо Выгрузка',
-    'Выгрузка Амо Полная', 
-    'Заявки с Сайта',
-    'Reserves RP',
-    'Guests RP',
-    'КоллТрекинг',
-    'РАБОЧИЙ АМО'
-  ];
+  const requiredSheets = Object.values(CONFIG.SHEETS);
   
-  // Создаём аналитические листы
-  const analyticsSheets = [
-    'Главная',
-    'Ежедневная статистика',
-    'Причина отказов', 
-    'СРАВНИТЕЛЬНЫЙ АНАЛИЗ',
-    'FIRST-TOUCH ANALYSIS',
-    'СВОДНАЯ АНАЛИТИКА AMOcrm',
-    'Лиды по каналам',
-    'UTM аналитика',
-    'Анализ менеджеров',
-    'КоллТрекинг',
-    'Сравнение месяцев',
-    'Клиентская аналитика',
-    'Анализ броней',
-    'Beauty Analytics'
-  ];
-  
-  // Создаём служебные листы
-  const serviceSheets = [
-    'LOG',
-    '_DIAG'
-  ];
-  
-  const allSheets = [...dataSheets, ...analyticsSheets, ...serviceSheets];
-  
-  allSheets.forEach(sheetName => {
+  requiredSheets.forEach(sheetName => {
     try {
       getOrCreateSheet_(sheetName);
       logInfo_('SHEET_CREATE', `Лист "${sheetName}" создан или уже существует`);
@@ -413,155 +377,6 @@ function setupTriggers_() {
   } catch (error) {
     logError_('TRIGGERS', 'Ошибка настройки триггеров', error);
     throw error;
-  }
-}
-
-/**
- * Очищает данные на листе
- * @param {Sheet} sheet - Лист для очистки
- * @private
- */
-function clearSheetData_(sheet) {
-  if (!sheet) return;
-  try {
-    if (sheet.getLastRow() > 0) {
-      sheet.clear();
-    }
-  } catch (error) {
-    logError_('CLEAR_SHEET', `Ошибка очистки листа "${sheet.getName()}"`, error);
-  }
-}
-
-/**
- * Применяет стиль заголовка к диапазону
- * @param {Range} range - Диапазон для применения стиля
- * @private
- */
-function applyHeaderStyle_(range) {
-  if (!range) return;
-  try {
-    range.setBackground(CONFIG.COLORS.HEADER_BG || '#4285f4')
-         .setFontColor(CONFIG.COLORS.HEADER_TEXT || '#ffffff')
-         .setFontWeight('bold')
-         .setFontSize(14)
-         .setHorizontalAlignment('center')
-         .setVerticalAlignment('middle');
-  } catch (error) {
-    logError_('STYLE_HEADER', 'Ошибка применения стиля заголовка', error);
-  }
-}
-
-/**
- * Применяет стиль подзаголовка к диапазону
- * @param {Range} range - Диапазон для применения стиля
- * @private
- */
-function applySubheaderStyle_(range) {
-  if (!range) return;
-  try {
-    range.setBackground(CONFIG.COLORS.SUBHEADER_BG || '#f1f3f4')
-         .setFontColor(CONFIG.COLORS.SUBHEADER_TEXT || '#202124')
-         .setFontWeight('bold')
-         .setFontSize(12)
-         .setHorizontalAlignment('center')
-         .setVerticalAlignment('middle');
-  } catch (error) {
-    logError_('STYLE_SUBHEADER', 'Ошибка применения стиля подзаголовка', error);
-  }
-}
-
-/**
- * Применяет стиль данных к диапазону
- * @param {Range} range - Диапазон для применения стиля
- * @private
- */
-function applyDataStyle_(range) {
-  if (!range) return;
-  try {
-    range.setBackground('#ffffff')
-         .setFontColor('#202124')
-         .setFontSize(11)
-         .setVerticalAlignment('middle')
-         .setBorder(true, true, true, true, true, true, '#e0e0e0', SpreadsheetApp.BorderStyle.SOLID);
-  } catch (error) {
-    logError_('STYLE_DATA', 'Ошибка применения стиля данных', error);
-  }
-}
-
-/**
- * Получает лист по имени
- * @param {string} sheetName - Имя листа
- * @return {Sheet|null} Лист или null если не найден
- * @private
- */
-function getSheet_(sheetName) {
-  try {
-    return SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-  } catch (error) {
-    logError_('GET_SHEET', `Ошибка получения листа "${sheetName}"`, error);
-    return null;
-  }
-}
-
-/**
- * Получает данные с листа в виде объекта с заголовками и строками
- * @param {string|Sheet} sheetOrName - Имя листа или объект листа
- * @return {Object|Array} Объект с header и rows или массив данных (для совместимости)
- * @private
- */
-function getSheetData_(sheetOrName) {
-  try {
-    let sheet;
-    let returnFormat = 'object'; // По умолчанию возвращаем объект
-    
-    // Определяем тип параметра
-    if (typeof sheetOrName === 'string') {
-      // Передано имя листа
-      sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetOrName);
-      returnFormat = 'object';
-    } else if (sheetOrName && typeof sheetOrName === 'object' && sheetOrName.getName) {
-      // Передан объект Sheet
-      sheet = sheetOrName;
-      returnFormat = 'array'; // Для совместимости со старыми модулями
-    } else {
-      logError_('GET_SHEET_DATA', 'Неверный тип параметра - ожидается имя листа или объект Sheet');
-      return returnFormat === 'object' ? { header: [], rows: [] } : [];
-    }
-    
-    if (!sheet) {
-      const sheetName = typeof sheetOrName === 'string' ? sheetOrName : 'неизвестный';
-      logWarning_('GET_SHEET_DATA', `Лист "${sheetName}" не найден`);
-      return returnFormat === 'object' ? { header: [], rows: [] } : [];
-    }
-    
-    if (sheet.getLastRow() <= 1) {
-      logWarning_('GET_SHEET_DATA', `Лист "${sheet.getName()}" пуст или содержит только заголовки`);
-      return returnFormat === 'object' ? { header: [], rows: [] } : [];
-    }
-    
-    const values = sheet.getDataRange().getValues();
-    if (!values || values.length === 0) {
-      return returnFormat === 'object' ? { header: [], rows: [] } : [];
-    }
-    
-    const header = (values[0] || []).map(String);
-    const rows = values.slice(1).filter(r => r.some(x => String(x).trim() !== ''));
-    
-    logInfo_('GET_SHEET_DATA', `Получено ${rows.length} строк из листа "${sheet.getName()}"`);
-    
-    // Возвращаем в нужном формате
-    if (returnFormat === 'array') {
-      // Для совместимости со старыми модулями - возвращаем массив
-      return [header, ...rows];
-    } else {
-      // Новый формат - объект с header и rows
-      return { header, rows };
-    }
-    
-  } catch (error) {
-    const sheetName = typeof sheetOrName === 'string' ? sheetOrName : 'неизвестный';
-    logError_('GET_SHEET_DATA', `Ошибка получения данных с листа "${sheetName}"`, error);
-    return returnFormat === 'object' ? { header: [], rows: [] } : [];
   }
 }
 
@@ -849,7 +664,11 @@ function testEmailNotifications() {
   }
 }
 
-// ===== ФУНКЦИИ ОБРАБОТКИ ДАННЫХ =====
+  } catch (e) {
+    logToSheet(ss, `Ошибка обновления: ${e.toString()}`, 'ERROR');
+    throw e;
+  }
+}
 
 /**
  * Чтение таблицы с универсальными утилитами
@@ -857,7 +676,7 @@ function testEmailNotifications() {
 function readTable(ss, sheetName) {
   const sh = ss.getSheetByName(sheetName);
   if (!sh) {
-    logWarning_('READ_TABLE', `Лист "${sheetName}" не найден`);
+    Logger.log(`⚠ Лист "${sheetName}" не найден`);
     return { header: [], rows: [] };
   }
   
@@ -904,213 +723,201 @@ function mergeByKey(tables, keyField) {
     if (key) keyToRowIndex.set(key, idx);
   });
   
-  // Объединяем заголовки всех таблиц
-  let mergedHeader = [...masterTable.header];
-  const tableCols = [masterTable.header.length];
-  
+  // Объединяем остальные таблицы
   for (let t = 1; t < tables.length; t++) {
     const table = tables[t];
-    const startCol = mergedHeader.length;
+    const tableKeyIdx = table.header.indexOf(keyField);
+    if (tableKeyIdx === -1) continue;
     
-    table.header.forEach(h => {
-      if (!mergedHeader.includes(h)) {
-        mergedHeader.push(h);
+    // Находим новые колонки
+    const newColumns = [];
+    table.header.forEach((col, idx) => {
+      if (!masterTable.header.includes(col)) {
+        masterTable.header.push(col);
+        newColumns.push(idx);
       }
     });
     
-    tableCols.push(mergedHeader.length);
-  }
-  
-  // Создаём объединённые строки
-  const mergedRows = masterTable.rows.map(row => {
-    const newRow = new Array(mergedHeader.length).fill('');
-    
-    // Копируем данные из первой таблицы
-    for (let i = 0; i < masterTable.header.length; i++) {
-      newRow[i] = row[i];
+    // Если есть новые колонки, расширяем существующие строки
+    if (newColumns.length > 0) {
+      masterTable.rows.forEach(row => {
+        for (let i = 0; i < newColumns.length; i++) {
+          row.push('');
+        }
+      });
     }
     
-    return newRow;
-  });
+    // Добавляем/обновляем данные
+    table.rows.forEach(row => {
+      const key = String(row[tableKeyIdx] || '').trim();
+      if (!key) return;
+      
+      const existingIdx = keyToRowIndex.get(key);
+      if (existingIdx !== undefined) {
+        // Обновляем существующую строку
+        table.header.forEach((col, colIdx) => {
+          const masterColIdx = masterTable.header.indexOf(col);
+          if (masterColIdx > -1 && row[colIdx] != null && row[colIdx] !== '') {
+            masterTable.rows[existingIdx][masterColIdx] = row[colIdx];
+          }
+        });
+      } else {
+        // Добавляем новую строку
+        const newRow = new Array(masterTable.header.length).fill('');
+        table.header.forEach((col, colIdx) => {
+          const masterColIdx = masterTable.header.indexOf(col);
+          if (masterColIdx > -1) {
+            newRow[masterColIdx] = row[colIdx];
+          }
+        });
+        masterTable.rows.push(newRow);
+        keyToRowIndex.set(key, masterTable.rows.length - 1);
+      }
+    });
+  }
   
-  return { header: mergedHeader, rows: mergedRows };
+  return masterTable;
 }
 
 /**
- * Построение агрегатов по телефонам
+ * Построение агрегатов для Reserves/Guests
  */
-function buildAggregates(rows, phoneIdx) {
-  const aggregates = new Map();
-  
-  if (phoneIdx === -1) return aggregates;
+function buildAggregates(rows, phoneIndex) {
+  const agg = new Map();
+  if (phoneIndex === -1 || !rows.length) return agg;
   
   rows.forEach(row => {
-    const phone = String(row[phoneIdx] || '').trim();
-    if (phone) {
-      if (!aggregates.has(phone)) {
-        aggregates.set(phone, []);
+    const phone = cleanPhone(row[phoneIndex]);
+    if (!phone) return;
+    
+    const existing = agg.get(phone) || { visits: 0, amount: 0, total: 0 };
+    existing.visits++;
+    
+    // Пробуем найти суммы в разных колонках
+    for (let i = 0; i < row.length; i++) {
+      const val = toNumber(row[i]);
+      if (val > 0 && val < 1000000) { // Разумные суммы
+        existing.amount += val;
+        existing.total += val;
       }
-      aggregates.get(phone).push(row);
     }
+    
+    agg.set(phone, existing);
   });
   
-  return aggregates;
+  return agg;
 }
 
 /**
  * Построение карты колл-трекинга
  */
 function buildCalltrackingMap(callTable) {
-  const ctMap = new Map();
+  const map = new Map();
+  if (!callTable.rows.length) return map;
   
-  if (!callTable.rows || callTable.rows.length === 0) return ctMap;
+  const phoneIdx = findColumnIndex(callTable.header, ['Телефон', 'Phone', 'Номер']);
+  const tagIdx = findColumnIndex(callTable.header, ['Тег', 'Tag', 'Источник']);
   
-  const phoneIdx = findColumnIndex(callTable.header, ['Телефон', 'Phone']);
-  const sourceIdx = findColumnIndex(callTable.header, ['Источник', 'Source']);
-  
-  if (phoneIdx === -1) return ctMap;
+  if (phoneIdx === -1 || tagIdx === -1) return map;
   
   callTable.rows.forEach(row => {
-    const phone = String(row[phoneIdx] || '').trim();
-    const source = String(row[sourceIdx] || '').trim();
-    if (phone && source) {
-      ctMap.set(phone, source);
+    const phone = cleanPhone(row[phoneIdx]);
+    const tag = cleanString(row[tagIdx]);
+    if (phone && tag) {
+      map.set(phone, tag);
     }
   });
   
-  return ctMap;
+  return map;
 }
 
 /**
- * Обогащение данных
+ * Построение обогащённых данных
  */
-function buildEnrichedData(canonized, siteTable, resAgg, gueAgg, ctMap, CFG) {
-  const headerOrderedRaw = [...canonized.header];
-  const enrichedRows = canonized.rows.map(row => [...row]);
+function buildEnrichedData(merged, siteTable, resAgg, gueAgg, ctMap, CFG) {
+  // Определяем порядок колонок
+  const baseOrder = [
+    'Сделка.ID', 'Сделка.Название', 'Сделка.Статус', 'Сделка.Бюджет',
+    'Сделка.Дата создания', 'Контакт.Телефон', 'Контакт.ФИО',
+    'Сделка.utm_source', 'Сделка.utm_medium', 'Сделка.utm_campaign'
+  ];
   
-  return {
-    headerOrderedRaw,
-    rows: enrichedRows
-  };
-}
-
-/**
- * Рендеринг в рабочий лист
- */
-function renderToWorkingSheet(ss, CFG, header, rows) {
-  const outputSheet = getOrCreateSheet_('РАБОЧИЙ АМО');
+  const headerOrderedRaw = [...baseOrder];
   
-  // Очищаем лист
-  outputSheet.clear();
-  
-  // Записываем заголовки
-  if (header.length > 0) {
-    outputSheet.getRange(1, 1, 1, header.length).setValues([header]);
-  }
-  
-  // Записываем данные
-  if (rows.length > 0 && header.length > 0) {
-    outputSheet.getRange(2, 1, rows.length, header.length).setValues(rows);
-  }
-  
-  logInfo_('RENDER', `Записано ${rows.length} строк в лист "РАБОЧИЙ АМО"`);
-}
-
-/**
- * Обновление времени в колонке TIME
- */
-function updateTimeOnlyOnWorking() {
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const workingSheet = ss.getSheetByName('РАБОЧИЙ АМО');
-    
-    if (!workingSheet) {
-      logWarning_('TIME_UPDATE', 'Рабочий лист не найден');
-      return;
+  // Добавляем остальные колонки из merged
+  merged.header.forEach(col => {
+    if (!headerOrderedRaw.includes(col)) {
+      headerOrderedRaw.push(col);
     }
+  });
+  
+  // Добавляем колонки обогащения
+  headerOrderedRaw.push(
+    'R.Источник ТЕЛ сделки',
+    'Reserves.Визиты', 'Reserves.Сумма', 'Reserves.Последний визит',
+    'Guests.Визиты', 'Guests.Общая сумма', 'Guests.Первый визит', 'Guests.Последний визит',
+    'Сумма ₽', 'Время прихода'
+  );
+  
+  // Строим индексы для merged
+  const indices = {};
+  headerOrderedRaw.forEach(col => {
+    indices[col] = merged.header.indexOf(col);
+  });
+  
+  // Обрабатываем строки
+  const rows = merged.rows.map(row => {
+    const out = [];
     
-    const lastRow = workingSheet.getLastRow();
-    if (lastRow <= 1) return;
-    
-    const header = workingSheet.getRange(1, 1, 1, workingSheet.getLastColumn()).getValues()[0];
-    const timeIdx = findColumnIndex(header, ['TIME', 'Время', 'Время обработки']);
-    
-    if (timeIdx > -1) {
-      const currentTime = getCurrentDateMoscow_().toLocaleString();
-      const timeRange = workingSheet.getRange(2, timeIdx + 1, lastRow - 1, 1);
-      const timeValues = Array(lastRow - 1).fill([currentTime]);
-      timeRange.setValues(timeValues);
-      
-      logInfo_('TIME_UPDATE', `Обновлено время в ${lastRow - 1} строках`);
-    }
-  } catch (error) {
-    logError_('TIME_UPDATE', 'Ошибка обновления времени', error);
-  }
-}
-
-/**
- * Обновление источников колл-трекинга в рабочем листе
- */
-function updateCalltrackingOnWorking() {
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const workingSheet = ss.getSheetByName('РАБОЧИЙ АМО');
-    const callSheet = ss.getSheetByName('КоллТрекинг');
-    
-    if (!workingSheet || !callSheet) {
-      logWarning_('CT_UPDATE', 'Рабочий лист или лист колл-трекинга не найден');
-      return;
-    }
-    
-    const lastRow = workingSheet.getLastRow();
-    if (lastRow <= 1) return;
-    
-    // Получаем карту колл-трекинга
-    const callTable = readTable(ss, 'КоллТрекинг');
-    const ctMap = buildCalltrackingMap(callTable);
-    
-    if (ctMap.size === 0) return;
-    
-    const header = workingSheet.getRange(1, 1, 1, workingSheet.getLastColumn()).getValues()[0];
-    const phoneIdx = findColumnIndex(header, ['Телефон', 'Phone']);
-    const sourceIdx = findColumnIndex(header, ['Источник ТЕЛ', 'Call Source']);
-    
-    if (phoneIdx === -1 || sourceIdx === -1) return;
-    
-    const data = workingSheet.getRange(2, 1, lastRow - 1, workingSheet.getLastColumn()).getValues();
-    let updated = 0;
-    
-    data.forEach((row, idx) => {
-      const phone = cleanPhone(row[phoneIdx]);
-      if (phone && ctMap.has(phone)) {
-        row[sourceIdx] = ctMap.get(phone);
-        updated++;
+    // Базовые поля
+    headerOrderedRaw.forEach(col => {
+      const idx = indices[col];
+      if (idx > -1) {
+        let val = row[idx];
+        
+        // Специальная обработка
+        if (col === 'Сделка.Статус') {
+          val = normalizeStatus(val);
+        } else if (col === 'Контакт.Телефон') {
+          val = cleanPhone(val);
+        } else if (col === 'Сделка.Дата создания') {
+          val = formatDate(val);
+        }
+        
+        out.push(val || '');
+      } else {
+        out.push('');
       }
     });
     
-    if (updated > 0) {
-      workingSheet.getRange(2, 1, data.length, data[0].length).setValues(data);
-      logInfo_('CT_UPDATE', `Обновлено ${updated} источников колл-трекинга`);
-    }
+    // Обогащение данными
+    const phone = cleanPhone(row[indices['Контакт.Телефон']]);
     
-  } catch (error) {
-    logError_('CT_UPDATE', 'Ошибка обновления колл-трекинга', error);
-  }
+    // Колл-трекинг
+    const ctIdx = out.length - 8; // Позиция R.Источник ТЕЛ сделки
+    out[ctIdx] = ctMap.get(phone) || '';
+    
+    // Reserves
+    const res = resAgg.get(phone);
+    out[ctIdx + 1] = res?.visits || 0;
+    out[ctIdx + 2] = res?.amount || 0;
+    out[ctIdx + 3] = res?.lastVisit || '';
+    
+    // Guests  
+    const gue = gueAgg.get(phone);
+    out[ctIdx + 4] = gue?.visits || 0;
+    out[ctIdx + 5] = gue?.total || 0;
+    out[ctIdx + 6] = gue?.firstVisit || '';
+    out[ctIdx + 7] = gue?.lastVisit || '';
+    
+    return out;
+  });
+  
+  return { headerOrderedRaw, rows };
 }
 
 /**
- * Очистка телефона для сопоставления
- */
-function cleanPhone(phone) {
-  if (!phone) return '';
-  return String(phone)
-    .replace(/\D/g, '')
-    .replace(/^[78]/, '')
-    .slice(0, 10);
-}
-
-/**
- * Гуманизация заголовков для отображения
+ * Преобразование технических названий в человекочитаемые
  */
 function humanizeHeader(header) {
   const humanMap = {
@@ -1135,118 +942,760 @@ function humanizeHeader(header) {
 }
 
 /**
- * Заглушка для обновления ежедневной статистики
- * Будет заменена на полную функцию из модуля 12_Ежедневная_Статистика.gs
+ * Рендер в рабочий лист с сохранением стилей
  */
-function updateDailyStatistics() {
+function renderToWorkingSheet(ss, CFG, displayHeader, rows) {
+  const sh = ss.getSheetByName(CFG.SHEETS.OUT) || ss.insertSheet(CFG.SHEETS.OUT);
+  
+  if (CFG.PRESERVE_STYLES) {
+    // Сохраняем оформление и значения первой строки
+    const maxR = sh.getMaxRows();
+    const maxC = sh.getMaxColumns();
+    if (maxR > 1 && maxC > 0) {
+      sh.getRange(2, 1, maxR - 1, maxC).clearContent();
+    }
+  } else {
+    sh.clear();
+  }
+
+  // Обеспечиваем размер
+  ensureSize(sh, 2 + rows.length, displayHeader.length);
+
+  // Заголовки во второй строке (первая может содержать оформление)
+  sh.getRange(2, 1, 1, displayHeader.length).setValues([displayHeader]);
+  
+  // Данные
+  if (rows.length > 0) {
+    sh.getRange(3, 1, rows.length, displayHeader.length).setValues(rows);
+  }
+
+  // Базовое оформление
+  setFontAll(sh);
+  
+  // Заморозка заголовков
+  sh.setFrozenRows(2);
+  
+  // Фильтр
   try {
-    logInfo_('DAILY_STATS', 'Начало обновления ежедневной статистики');
+    const existingFilter = sh.getFilter();
+    if (existingFilter) existingFilter.remove();
+    sh.getRange(2, 1, 1, displayHeader.length).createFilter();
+  } catch (e) {
+    Logger.log('Ошибка создания фильтра: ' + e.toString());
+  }
+}
+
+/**
+ * Создание подмножеств данных
+ */
+function makeSubsets(ss, displayHeader, rows, CFG) {
+  const statusIdx = displayHeader.indexOf('Статус');
+  const createdIdx = displayHeader.indexOf('Дата создания');
+  
+  if (statusIdx === -1) return;
+  
+  const today = new Date();
+  const threeDaysAgo = new Date(today.getTime() - 3 * 24 * 60 * 60 * 1000);
+  
+  // НОВЫЕ: недавно созданные, не закрытые
+  const newRows = rows.filter(row => {
+    const status = String(row[statusIdx] || '');
+    const created = toDate(row[createdIdx]);
     
-    // Получаем данные из рабочего листа
-    const workingData = getSheetData_('РАБОЧИЙ АМО');
-    if (workingData.rows.length === 0) {
-      logWarning_('DAILY_STATS', 'Нет данных для анализа');
-      return;
+    const isNotClosed = !CFG.CLOSED_RE.test(status);
+    const isRecent = created && created >= threeDaysAgo;
+    
+    return isNotClosed && isRecent;
+  });
+  
+  // ПРОБЛЕМНЫЕ: старые незакрытые
+  const problemRows = rows.filter(row => {
+    const status = String(row[statusIdx] || '');
+    const created = toDate(row[createdIdx]);
+    
+    const isNotClosed = !CFG.CLOSED_RE.test(status);
+    const isOld = created && created < threeDaysAgo;
+    
+    return isNotClosed && isOld;
+  });
+  
+  // Записываем в листы
+  writeSubset(ss, CFG.SHEETS.NEW_ONLY, displayHeader, newRows);
+  writeSubset(ss, CFG.SHEETS.PROBLEM, displayHeader, problemRows);
+}
+
+/**
+ * Запись подмножества в лист
+ */
+function writeSubset(ss, sheetName, header, rows) {
+  let sh = ss.getSheetByName(sheetName);
+  if (!sh) sh = ss.insertSheet(sheetName);
+  else sh.clear();
+  
+  // Заголовок
+  sh.getRange(1, 1, 1, header.length).setValues([header]).setFontWeight('bold');
+  
+  // Данные
+  if (rows.length > 0) {
+    sh.getRange(2, 1, rows.length, header.length).setValues(rows);
+  }
+  
+  // Заморозка и фильтр
+  sh.setFrozenRows(1);
+  try {
+    sh.getRange(1, 1, 1, header.length).createFilter();
+  } catch (e) {
+    // Игнорируем ошибки фильтра
+  }
+  
+  setFontAll(sh);
+}
+
+/**
+ * Обновление времени в колонке TIME
+ */
+function updateTimeOnlyOnWorking() {
+  const CFG = getModuleConfig('mainScript');
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(CFG.SHEETS.OUT);
+  if (!sh) throw new Error(`Нет листа "${CFG.SHEETS.OUT}"`);
+
+  // Заголовки во 2-й строке
+  const header = sh.getRange(2, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+
+  const colTIME = header.indexOf('TIME') + 1;
+  const colArrival = header.indexOf('Время прихода') + 1;
+  
+  if (colTIME <= 0) throw new Error('Не найдена колонка "TIME"');
+
+  const lastRow = sh.getLastRow();
+  const n = Math.max(0, lastRow - 2);
+  if (n === 0) return;
+
+  const timeVals = sh.getRange(3, colTIME, n, 1).getValues();
+  const arrivalVals = colArrival > 0 ? sh.getRange(3, colArrival, n, 1).getValues() : null;
+
+  const out = timeVals.map((row, i) => {
+    let v = row[0];
+    
+    // Если TIME пусто, берём из "Время прихода"
+    if ((v === '' || v == null) && arrivalVals) {
+      v = arrivalVals[i][0];
     }
-    
-    // Создаём базовый отчёт ежедневной статистики
-    const dailySheet = getOrCreateSheet_('Ежедневная статистика');
-    clearSheetData_(dailySheet);
-    
-    // Заголовки
-    const headers = ['Дата', 'Всего сделок', 'Новые лиды', 'Конверсии', 'Среднее время обработки'];
-    dailySheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-    applyHeaderStyle_(dailySheet.getRange(1, 1, 1, headers.length));
-    
-    // Получаем статистику по дням
-    const dailyStats = analyzeDailyStats_(workingData);
-    if (dailyStats.length > 0) {
-      dailySheet.getRange(2, 1, dailyStats.length, headers.length).setValues(dailyStats);
-      applyDataStyle_(dailySheet.getRange(2, 1, dailyStats.length, headers.length));
+
+    // Если дата/время — берём только время
+    if (v instanceof Date) {
+      const t = new Date(v);
+      const ms = t.getHours() * 3600000 + t.getMinutes() * 60000 + t.getSeconds() * 1000;
+      return [ms / 86400000]; // Доля суток для Google Sheets
     }
+
+    // Если строка — парсим HH:MM
+    const s = String(v || '').trim();
+    if (s) {
+      const m = s.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+      if (m) {
+        const h = Math.min(23, Number(m[1]));
+        const min = Math.min(59, Number(m[2]));
+        const sec = m[3] ? Math.min(59, Number(m[3])) : 0;
+        const ms = h * 3600000 + min * 60000 + sec * 1000;
+        return [ms / 86400000];
+      }
+    }
+
+    return [''];
+  });
+
+  // Записываем и форматируем как время
+  sh.getRange(3, colTIME, n, 1).setValues(out);
+  sh.getRange(3, colTIME, n, 1).setNumberFormat('hh:mm');
+}
+
+/**
+ * Обновление R.Источник ТЕЛ сделки на основе колл-трекинга
+ */
+function updateCalltrackingOnWorking() {
+  const CFG = getModuleConfig('mainScript');
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(CFG.SHEETS.OUT);
+  if (!sh) throw new Error(`Нет листа "${CFG.SHEETS.OUT}"`);
+
+  const header = sh.getRange(2, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+
+  const colMangoContact = header.indexOf('Контакт.Номер линии MANGO OFFICE') + 1;
+  const colMangoDeal = header.indexOf('Сделка.Номер линии MANGO OFFICE') + 1;
+  let colOut = header.indexOf('R.Источник ТЕЛ сделки') + 1;
+
+  if (colMangoContact <= 0 || colMangoDeal <= 0) {
+    throw new Error('Не найдены колонки Mango Office');
+  }
+  if (colOut <= 0) colOut = 22; // Резервная позиция
+
+  const lastRow = sh.getLastRow();
+  const n = Math.max(0, lastRow - 2);
+  if (n === 0) return;
+
+  // Загружаем карту колл-трекинга
+  const callTable = readTable(ss, CFG.SHEETS.CALL);
+  const ctMap = buildCalltrackingMap(callTable);
+
+  const mangoC = sh.getRange(3, colMangoContact, n, 1).getValues();
+  const mangoD = sh.getRange(3, colMangoDeal, n, 1).getValues();
+
+  const out = mangoC.map((row, i) => {
+    const phoneC = cleanPhone(row[0]);
+    const phoneD = cleanPhone(mangoD[i][0]);
     
-    // Автоширина столбцов
-    dailySheet.autoResizeColumns(1, headers.length);
+    const tag = ctMap.get(phoneC) || ctMap.get(phoneD) || '';
+    return [tag];
+  });
+
+  sh.getRange(3, colOut, n, 1).setValues(out);
+}
+
+// ========================================
+// РАСШИРЕННЫЕ ФУНКЦИИ ОБРАБОТКИ ДАННЫХ
+// Интегрированные из проверенного старого скрипта
+// ========================================
+
+/**
+ * Инициализация рабочих структур данных
+ */
+function initializeWorkingData_() {
+  logInfo_('DATA_INIT', 'Инициализация рабочих структур данных');
+  
+  return {
+    phoneMap: new Map(),
+    utmMap: new Map(),
+    calltrackingData: new Map(),
+    processedDeals: new Set(),
+    statusMapping: {
+      'Первичный контакт': 'new',
+      'Переговоры': 'in_progress', 
+      'Принимают решение': 'considering',
+      'Согласование договора': 'contract',
+      'Успешно реализовано': 'success',
+      'Закрыто и не реализовано': 'failed'
+    },
+    errors: [],
+    warnings: [],
+    stats: {
+      total: 0,
+      processed: 0,
+      enriched: 0,
+      failed: 0
+    }
+  };
+}
+
+/**
+ * Загрузка и обогащение данных из всех источников
+ */
+function loadAndEnrichAllData_(workingData) {
+  logInfo_('DATA_ENRICH', 'Начало загрузки и обогащения данных');
+  
+  try {
+    // 1. Загружаем основные данные
+    const mainData = loadMainDataSources_();
     
-    logInfo_('DAILY_STATS', `Ежедневная статистика обновлена: ${dailyStats.length} записей`);
+    // 2. Строим карты телефонов для сопоставления
+    buildPhoneMaps_(workingData, mainData);
+    
+    // 3. Обогащаем UTM данными
+    enrichWithUTMData_(workingData, mainData);
+    
+    // 4. Интегрируем данные коллтрекинга
+    integrateCalltrackingData_(workingData, mainData);
+    
+    // 5. Нормализуем статусы и стадии
+    normalizeStatusesAndStages_(workingData, mainData);
+    
+    logInfo_('DATA_ENRICH', 'Обогащение данных завершено успешно');
+    return mainData;
     
   } catch (error) {
-    logError_('DAILY_STATS', 'Ошибка обновления ежедневной статистики', error);
+    logError_('DATA_ENRICH', 'Критическая ошибка обогащения данных', error);
     throw error;
   }
 }
 
 /**
- * Анализирует данные по дням
- * @param {Object} workingData - Данные из рабочего листа
- * @return {Array} Массив статистики по дням
- * @private
+ * Загрузка основных источников данных
  */
-function analyzeDailyStats_(workingData) {
-  const dailyMap = new Map();
+function loadMainDataSources_() {
+  const sources = {
+    amocrm: [],
+    calltracking: [],
+    analytics: [],
+    utm: []
+  };
   
-  // Найдём индекс колонки с датой
-  const dateIdx = findColumnIndex(workingData.header, ['Дата создания', 'Сделка.Дата создания', 'Date']);
-  if (dateIdx === -1) {
-    logWarning_('DAILY_STATS', 'Колонка с датой не найдена');
-    return [];
+  try {
+    // AmoCRM данные
+    logInfo_('DATA_LOAD', 'Загрузка данных AmoCRM');
+    sources.amocrm = loadAmoCrmData_();
+    
+    // Коллтрекинг данные
+    logInfo_('DATA_LOAD', 'Загрузка данных коллтрекинга');
+    sources.calltracking = loadCalltrackingData_();
+    
+    // Analytics данные
+    logInfo_('DATA_LOAD', 'Загрузка аналитических данных');
+    sources.analytics = loadAnalyticsData_();
+    
+    // UTM данные
+    logInfo_('DATA_LOAD', 'Загрузка UTM данных');
+    sources.utm = loadUTMData_();
+    
+    return sources;
+    
+  } catch (error) {
+    logError_('DATA_LOAD', 'Ошибка загрузки основных данных', error);
+    throw error;
+  }
+}
+
+/**
+ * Построение карт телефонов для сопоставления
+ * Основано на логике из buildWorkingFromFive
+ */
+function buildPhoneMaps_(workingData, mainData) {
+  logInfo_('PHONE_MAP', 'Построение карт телефонов');
+  
+  try {
+    // Нормализация телефонов из AmoCRM
+    mainData.amocrm.forEach(deal => {
+      if (deal.phone) {
+        const normalizedPhone = normalizePhone_(deal.phone);
+        if (normalizedPhone) {
+          workingData.phoneMap.set(normalizedPhone, deal);
+        }
+      }
+    });
+    
+    // Нормализация телефонов из коллтрекинга
+    mainData.calltracking.forEach(call => {
+      if (call.phone) {
+        const normalizedPhone = normalizePhone_(call.phone);
+        if (normalizedPhone) {
+          workingData.calltrackingData.set(normalizedPhone, call);
+        }
+      }
+    });
+    
+    logInfo_('PHONE_MAP', `Создано ${workingData.phoneMap.size} телефонных сопоставлений`);
+    
+  } catch (error) {
+    logError_('PHONE_MAP', 'Ошибка построения карт телефонов', error);
+    workingData.errors.push(`Ошибка обработки телефонов: ${error.message}`);
+  }
+}
+
+/**
+ * Нормализация номера телефона
+ * Точная копия логики из старого скрипта
+ */
+function normalizePhone_(phone) {
+  if (!phone) return null;
+  
+  // Убираем все нецифровые символы
+  let clean = phone.toString().replace(/\D/g, '');
+  
+  // Обрабатываем российские номера
+  if (clean.length === 11 && clean.startsWith('7')) {
+    return clean;
+  } else if (clean.length === 11 && clean.startsWith('8')) {
+    return '7' + clean.substring(1);
+  } else if (clean.length === 10) {
+    return '7' + clean;
   }
   
-  // Группируем по дням
-  workingData.rows.forEach(row => {
-    const dateValue = row[dateIdx];
-    if (!dateValue) return;
+  return clean.length >= 10 ? clean : null;
+}
+
+/**
+ * Обогащение UTM данными
+ */
+function enrichWithUTMData_(workingData, mainData) {
+  logInfo_('UTM_ENRICH', 'Обогащение UTM данными');
+  
+  try {
+    mainData.utm.forEach(utmRecord => {
+      const key = generateUTMKey_(utmRecord);
+      workingData.utmMap.set(key, utmRecord);
+    });
     
-    let dateStr;
-    if (dateValue instanceof Date) {
-      dateStr = formatDate_(dateValue, 'DD.MM.YYYY');
-    } else {
-      const parsedDate = new Date(dateValue);
-      if (isNaN(parsedDate)) return;
-      dateStr = formatDate_(parsedDate, 'DD.MM.YYYY');
+    // Применяем UTM к основным данным
+    mainData.amocrm.forEach(deal => {
+      const utmKey = generateDealUTMKey_(deal);
+      const utmData = workingData.utmMap.get(utmKey);
+      
+      if (utmData) {
+        deal.enriched = deal.enriched || {};
+        deal.enriched.utm = utmData;
+        workingData.stats.enriched++;
+      }
+    });
+    
+    logInfo_('UTM_ENRICH', `Обогащено ${workingData.stats.enriched} записей UTM данными`);
+    
+  } catch (error) {
+    logError_('UTM_ENRICH', 'Ошибка обогащения UTM данными', error);
+    workingData.errors.push(`Ошибка UTM обогащения: ${error.message}`);
+  }
+}
+
+/**
+ * Генерация ключа UTM для сопоставления
+ */
+function generateUTMKey_(utmRecord) {
+  return `${utmRecord.source || ''}_${utmRecord.medium || ''}_${utmRecord.campaign || ''}`;
+}
+
+/**
+ * Генерация UTM ключа для сделки
+ */
+function generateDealUTMKey_(deal) {
+  return `${deal.utm_source || ''}_${deal.utm_medium || ''}_${deal.utm_campaign || ''}`;
+}
+
+/**
+ * Интеграция данных коллтрекинга
+ */
+function integrateCalltrackingData_(workingData, mainData) {
+  logInfo_('CALLTRACK_INTEGRATE', 'Интеграция данных коллтрекинга');
+  
+  try {
+    mainData.amocrm.forEach(deal => {
+      const normalizedPhone = normalizePhone_(deal.phone);
+      const callData = workingData.calltrackingData.get(normalizedPhone);
+      
+      if (callData) {
+        deal.enriched = deal.enriched || {};
+        deal.enriched.calltracking = {
+          source: callData.source,
+          keyword: callData.keyword,
+          city: callData.city,
+          duration: callData.duration,
+          status: callData.status
+        };
+        workingData.stats.enriched++;
+      }
+    });
+    
+    logInfo_('CALLTRACK_INTEGRATE', 'Интеграция коллтрекинга завершена');
+    
+  } catch (error) {
+    logError_('CALLTRACK_INTEGRATE', 'Ошибка интеграции коллтрекинга', error);
+    workingData.errors.push(`Ошибка коллтрекинга: ${error.message}`);
+  }
+}
+
+/**
+ * Нормализация статусов и стадий
+ */
+function normalizeStatusesAndStages_(workingData, mainData) {
+  logInfo_('STATUS_NORMALIZE', 'Нормализация статусов и стадий');
+  
+  try {
+    mainData.amocrm.forEach(deal => {
+      // Нормализуем статус
+      const originalStatus = deal.status;
+      const normalizedStatus = workingData.statusMapping[originalStatus] || 'unknown';
+      
+      deal.normalized_status = normalizedStatus;
+      
+      // Определяем категорию стадии
+      deal.stage_category = determineStageCategory_(deal.stage);
+      
+      workingData.stats.processed++;
+    });
+    
+    logInfo_('STATUS_NORMALIZE', `Нормализовано ${workingData.stats.processed} записей`);
+    
+  } catch (error) {
+    logError_('STATUS_NORMALIZE', 'Ошибка нормализации статусов', error);
+    workingData.errors.push(`Ошибка нормализации: ${error.message}`);
+  }
+}
+
+/**
+ * Определение категории стадии
+ */
+function determineStageCategory_(stage) {
+  if (!stage) return 'unknown';
+  
+  const stageStr = stage.toLowerCase();
+  
+  if (stageStr.includes('новая') || stageStr.includes('первичн')) {
+    return 'new';
+  } else if (stageStr.includes('работа') || stageStr.includes('переговор')) {
+    return 'in_progress';
+  } else if (stageStr.includes('решение') || stageStr.includes('раздум')) {
+    return 'considering';
+  } else if (stageStr.includes('договор') || stageStr.includes('согласован')) {
+    return 'contract';
+  } else if (stageStr.includes('успешно') || stageStr.includes('реализован')) {
+    return 'success';
+  } else if (stageStr.includes('закрыт') || stageStr.includes('отказ')) {
+    return 'failed';
+  }
+  
+  return 'other';
+}
+
+/**
+ * Основная обработка данных по продвинутой логике
+ */
+function processAdvancedDataLogic_(enrichedData) {
+  logInfo_('ADVANCED_PROCESS', 'Запуск продвинутой обработки данных');
+  
+  try {
+    // 1. Дедупликация и очистка данных
+    const cleanData = deduplicateAndCleanData_(enrichedData);
+    
+    // 2. Анализ первых касаний
+    const firstTouchResults = analyzeFirstTouchAttribution_(cleanData);
+    
+    // 3. Анализ конверсий по воронке
+    const funnelAnalysis = analyzeFunnelConversions_(cleanData);
+    
+    // 4. Расчёт LTV и ROI
+    const ltvRoiAnalysis = calculateLTVandROI_(cleanData);
+    
+    // 5. Сохраняем результаты
+    saveAdvancedAnalysisResults_({
+      firstTouch: firstTouchResults,
+      funnel: funnelAnalysis,
+      ltvRoi: ltvRoiAnalysis
+    });
+    
+    logInfo_('ADVANCED_PROCESS', 'Продвинутая обработка завершена успешно');
+    
+  } catch (error) {
+    logError_('ADVANCED_PROCESS', 'Ошибка продвинутой обработки', error);
+    throw error;
+  }
+}
+
+/**
+ * Дедупликация и очистка данных
+ */
+function deduplicateAndCleanData_(data) {
+  logInfo_('DATA_CLEAN', 'Дедупликация и очистка данных');
+  
+  const seen = new Set();
+  const cleanData = {
+    amocrm: [],
+    calltracking: [],
+    analytics: [],
+    utm: []
+  };
+  
+  // Дедупликация AmoCRM данных
+  data.amocrm.forEach(deal => {
+    const key = `${deal.id}_${deal.phone}_${deal.email}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      cleanData.amocrm.push(deal);
     }
+  });
+  
+  // Очистка других источников аналогично
+  cleanData.calltracking = data.calltracking;
+  cleanData.analytics = data.analytics;
+  cleanData.utm = data.utm;
+  
+  logInfo_('DATA_CLEAN', `Очищено: ${cleanData.amocrm.length} записей AmoCRM`);
+  return cleanData;
+}
+
+/**
+ * Анализ первых касаний
+ */
+function analyzeFirstTouchAttribution_(data) {
+  logInfo_('FIRST_TOUCH', 'Анализ первых касаний');
+  
+  const firstTouchMap = new Map();
+  
+  data.amocrm.forEach(deal => {
+    const clientKey = normalizePhone_(deal.phone) || deal.email || deal.id;
     
-    if (!dailyMap.has(dateStr)) {
-      dailyMap.set(dateStr, {
-        total: 0,
-        new_leads: 0,
-        conversions: 0
+    if (!firstTouchMap.has(clientKey)) {
+      firstTouchMap.set(clientKey, {
+        deal: deal,
+        firstTouchDate: deal.created_at,
+        source: deal.utm_source || deal.enriched?.calltracking?.source || 'direct'
       });
-    }
-    
-    const stats = dailyMap.get(dateStr);
-    stats.total++;
-    
-    // Определяем новые лиды (упрощённая логика)
-    const status = String(row[findColumnIndex(workingData.header, ['Статус', 'Сделка.Статус'])] || '');
-    if (status.includes('Новый') || status.includes('новый') || status.includes('NEW')) {
-      stats.new_leads++;
-    }
-    
-    // Определяем конверсии (упрощённая логика)
-    if (status.includes('Успешно') || status.includes('успешно') || status.includes('Закрыт') || status.includes('SUCCESS')) {
-      stats.conversions++;
+    } else {
+      // Сравниваем даты и оставляем более раннее касание
+      const existing = firstTouchMap.get(clientKey);
+      if (deal.created_at < existing.firstTouchDate) {
+        firstTouchMap.set(clientKey, {
+          deal: deal,
+          firstTouchDate: deal.created_at,
+          source: deal.utm_source || deal.enriched?.calltracking?.source || 'direct'
+        });
+      }
     }
   });
   
-  // Преобразуем в массив для таблицы
-  const result = [];
-  for (const [date, stats] of dailyMap.entries()) {
-    result.push([
-      date,
-      stats.total,
-      stats.new_leads,
-      stats.conversions,
-      '~5 мин' // Заглушка для времени обработки
+  return Array.from(firstTouchMap.values());
+}
+
+/**
+ * Анализ конверсий по воронке
+ */
+function analyzeFunnelConversions_(data) {
+  logInfo_('FUNNEL_ANALYSIS', 'Анализ воронки конверсий');
+  
+  const funnel = {
+    total: 0,
+    new: 0,
+    in_progress: 0,
+    considering: 0,
+    contract: 0,
+    success: 0,
+    failed: 0
+  };
+  
+  data.amocrm.forEach(deal => {
+    funnel.total++;
+    funnel[deal.stage_category] = (funnel[deal.stage_category] || 0) + 1;
+  });
+  
+  // Рассчитываем конверсии
+  const conversions = {
+    new_to_progress: funnel.in_progress / funnel.new * 100,
+    progress_to_considering: funnel.considering / funnel.in_progress * 100,
+    considering_to_contract: funnel.contract / funnel.considering * 100,
+    contract_to_success: funnel.success / funnel.contract * 100,
+    overall_conversion: funnel.success / funnel.total * 100
+  };
+  
+  return { funnel, conversions };
+}
+
+/**
+ * Расчёт LTV и ROI
+ */
+function calculateLTVandROI_(data) {
+  logInfo_('LTV_ROI', 'Расчёт LTV и ROI');
+  
+  const results = {
+    total_revenue: 0,
+    total_deals: 0,
+    average_deal_value: 0,
+    ltv: 0,
+    roi: 0
+  };
+  
+  const successfulDeals = data.amocrm.filter(deal => deal.stage_category === 'success');
+  
+  results.total_deals = successfulDeals.length;
+  results.total_revenue = successfulDeals.reduce((sum, deal) => sum + (deal.price || 0), 0);
+  results.average_deal_value = results.total_revenue / results.total_deals || 0;
+  
+  // Простой расчёт LTV (среднее значение сделки * 1.5)
+  results.ltv = results.average_deal_value * 1.5;
+  
+  // ROI рассчитывается на основе известных затрат
+  const totalCosts = calculateTotalMarketingCosts_(data);
+  results.roi = totalCosts > 0 ? (results.total_revenue / totalCosts * 100 - 100) : 0;
+  
+  return results;
+}
+
+/**
+ * Расчёт общих маркетинговых затрат
+ */
+function calculateTotalMarketingCosts_(data) {
+  // Здесь должна быть логика расчёта затрат из ваших источников
+  // Пока возвращаем заглушку
+  return 100000; // Заглушка для примера
+}
+
+/**
+ * Сохранение результатов продвинутого анализа
+ */
+function saveAdvancedAnalysisResults_(results) {
+  logInfo_('SAVE_RESULTS', 'Сохранение результатов продвинутого анализа');
+  
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    
+    // Сохраняем результаты в специальный лист
+    let sheet = ss.getSheetByName('Продвинутая Аналитика');
+    if (!sheet) {
+      sheet = ss.insertSheet('Продвинутая Аналитика');
+    }
+    
+    // Очищаем предыдущие данные
+    sheet.clear();
+    
+    // Заголовки
+    sheet.getRange(1, 1, 1, 4).setValues([['Метрика', 'Значение', 'Дата обновления', 'Комментарий']]);
+    
+    // Данные первых касаний
+    const firstTouchData = results.firstTouch.map((item, index) => [
+      `Первое касание ${index + 1}`,
+      item.source,
+      item.firstTouchDate,
+      'Источник первого касания'
     ]);
+    
+    // Данные воронки
+    const funnelData = Object.entries(results.funnel.conversions).map(([key, value]) => [
+      `Конверсия ${key}`,
+      `${value.toFixed(2)}%`,
+      new Date(),
+      'Конверсия по этапам воронки'
+    ]);
+    
+    // Данные LTV/ROI
+    const ltvRoiData = Object.entries(results.ltvRoi).map(([key, value]) => [
+      key.toUpperCase(),
+      typeof value === 'number' ? value.toFixed(2) : value,
+      new Date(),
+      'Показатели доходности'
+    ]);
+    
+    // Записываем все данные
+    const allData = [...firstTouchData, ...funnelData, ...ltvRoiData];
+    if (allData.length > 0) {
+      sheet.getRange(2, 1, allData.length, 4).setValues(allData);
+    }
+    
+    // Применяем форматирование
+    sheet.getRange(1, 1, 1, 4).setBackground('#4285f4').setFontColor('white').setFontWeight('bold');
+    
+    logInfo_('SAVE_RESULTS', 'Результаты продвинутого анализа сохранены');
+    
+  } catch (error) {
+    logError_('SAVE_RESULTS', 'Ошибка сохранения результатов', error);
+    throw error;
   }
-  
-  // Сортируем по дате (новые сверху)
-  result.sort((a, b) => {
-    const dateA = new Date(a[0].split('.').reverse().join('-'));
-    const dateB = new Date(b[0].split('.').reverse().join('-'));
-    return dateB - dateA;
-  });
-  
-  return result;
+}
+
+/**
+ * Заглушки для загрузки данных - нужно будет заменить на реальные функции
+ */
+function loadAmoCrmData_() {
+  // Загрузка данных из AmoCRM через API или из листа
+  return [];
+}
+
+function loadCalltrackingData_() {
+  // Загрузка данных коллтрекинга
+  return [];
+}
+
+function loadAnalyticsData_() {
+  // Загрузка аналитических данных
+  return [];
+}
+
+function loadUTMData_() {
+  // Загрузка UTM данных
+  return [];
 }

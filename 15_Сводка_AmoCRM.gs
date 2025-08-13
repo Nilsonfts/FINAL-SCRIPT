@@ -438,16 +438,21 @@ function addAmoCrmSummaryCharts_(sheet, allTimeData, monthlyData) {
       allTimeData.topChannels.slice(0, 8).map(item => [item.channel, item.revenue])
     );
     
-    // Создаем диаграмму через универсальную функцию
-    const channelChart = createChart_(sheet, 'pie', channelChartData, {
-      startRow: 1,
-      startCol: 7,
-      title: 'Выручка по каналам (за всё время)',
-      position: { row: 3, col: 7 },
-      width: 500,
-      height: 350,
-      legend: 'right'
-    });
+    const channelChart = sheet.insertChart(
+      Charts.newPieChart()
+        .setDataRange(sheet.getRange(1, 7, channelChartData.length, 2))
+        .setOption('title', 'Выручка по каналам (за всё время)')
+        .setOption('titleTextStyle', { fontSize: 14, bold: true })
+        .setOption('legend', { position: 'right' })
+        .setOption('chartArea', { width: '80%', height: '80%' })
+        .setPosition(3, 7, 0, 0)
+        .setOption('width', 500)
+        .setOption('height', 350)
+        .build()
+    );
+    
+    // Записываем данные для диаграммы
+    sheet.getRange(1, 7, channelChartData.length, 2).setValues(channelChartData);
   }
   
   // 2. Линейная диаграмма динамики по месяцам
@@ -456,18 +461,28 @@ function addAmoCrmSummaryCharts_(sheet, allTimeData, monthlyData) {
       monthlyData.map(item => [item.month, item.leads, item.won, item.revenue])
     );
     
-    // Создаем диаграмму через универсальную функцию
-    const monthlyChart = createChart_(sheet, 'column', monthlyChartData, {
-      startRow: 1,
-      startCol: 10,
-      title: 'Динамика показателей по месяцам',
-      position: { row: 20, col: 7 },
-      width: 600,
-      height: 400,
-      legend: 'top',
-      hAxisTitle: 'Месяц',
-      vAxisTitle: 'Количество'
-    });
+    const monthlyChart = sheet.insertChart(
+      Charts.newColumnChart()
+        .setDataRange(sheet.getRange(1, 10, monthlyChartData.length, 4))
+        .setOption('title', 'Динамика показателей по месяцам')
+        .setOption('titleTextStyle', { fontSize: 14, bold: true })
+        .setOption('legend', { position: 'top' })
+        .setOption('hAxis', { title: 'Месяц', slantedText: true })
+        .setOption('vAxes', {
+          0: { title: 'Количество' },
+          1: { title: 'Выручка, руб.' }
+        })
+        .setOption('series', {
+          2: { targetAxisIndex: 1, type: 'line' }  // Выручка на правой оси
+        })
+        .setPosition(20, 7, 0, 0)
+        .setOption('width', 600)
+        .setOption('height', 400)
+        .build()
+    );
+    
+    // Записываем данные для диаграммы
+    sheet.getRange(1, 10, monthlyChartData.length, 4).setValues(monthlyChartData);
   }
   
   // 3. Столбчатая диаграмма конверсии по каналам
@@ -476,18 +491,22 @@ function addAmoCrmSummaryCharts_(sheet, allTimeData, monthlyData) {
       allTimeData.topChannels.slice(0, 8).map(item => [item.channel, item.conversion])
     );
     
-    // Создаем диаграмму через универсальную функцию
-    const conversionChart = createChart_(sheet, 'column', conversionChartData, {
-      startRow: 1,
-      startCol: 15,
-      title: 'Конверсия по каналам',
-      position: { row: 45, col: 7 },
-      width: 500,
-      height: 350,
-      legend: 'none',
-      hAxisTitle: 'Канал',
-      vAxisTitle: 'Конверсия, %'
-    });
+    const conversionChart = sheet.insertChart(
+      Charts.newColumnChart()
+        .setDataRange(sheet.getRange(1, 15, conversionChartData.length, 2))
+        .setOption('title', 'Конверсия по каналам')
+        .setOption('titleTextStyle', { fontSize: 14, bold: true })
+        .setOption('legend', { position: 'none' })
+        .setOption('hAxis', { title: 'Канал', slantedText: true })
+        .setOption('vAxis', { title: 'Конверсия, %' })
+        .setPosition(45, 7, 0, 0)
+        .setOption('width', 500)
+        .setOption('height', 350)
+        .build()
+    );
+    
+    // Записываем данные для диаграммы
+    sheet.getRange(1, 15, conversionChartData.length, 2).setValues(conversionChartData);
   }
 }
 

@@ -731,18 +731,23 @@ function addDailyStatisticsCharts_(sheet, dailyData) {
       ])
     );
     
-    // Создаем диаграмму через универсальную функцию
-    const dailyChart = createChart_(sheet, 'line', dailyChartData, {
-      startRow: 1,
-      startCol: 10,
-      title: 'Динамика лидов и сделок (30 дней)',
-      position: { row: 3, col: 10 },
-      width: 700,
-      height: 400,
-      legend: 'top',
-      hAxisTitle: 'Дата',
-      vAxisTitle: 'Количество'
-    });
+    const dailyChart = sheet.insertChart(
+      Charts.newLineChart()
+        .setDataRange(sheet.getRange(1, 10, dailyChartData.length, 3))
+        .setOption('title', 'Динамика лидов и сделок (30 дней)')
+        .setOption('titleTextStyle', { fontSize: 14, bold: true })
+        .setOption('legend', { position: 'top' })
+        .setOption('hAxis', { title: 'Дата', slantedText: true })
+        .setOption('vAxis', { title: 'Количество' })
+        .setOption('series', {
+          0: { targetAxisIndex: 0, color: '#4285f4' },
+          1: { targetAxisIndex: 0, color: '#34a853' }
+        })
+        .setPosition(3, 10, 0, 0)
+        .setOption('width', 700)
+        .setOption('height', 400)
+        .build()
+    );
     
     sheet.getRange(1, 10, dailyChartData.length, 3).setValues(dailyChartData);
   }
@@ -753,18 +758,21 @@ function addDailyStatisticsCharts_(sheet, dailyData) {
       dailyData.weekdayAnalysis.map(day => [day.dayName, day.avgLeadsPerDay])
     );
     
-    // Создаем диаграмму через универсальную функцию
-    const weekdayChart = createChart_(sheet, 'column', weekdayChartData, {
-      startRow: 1,
-      startCol: 14,
-      title: 'Активность по дням недели',
-      position: { row: 3, col: 18 },
-      width: 500,
-      height: 350,
-      legend: 'none',
-      hAxisTitle: 'День недели',
-      vAxisTitle: 'Среднее количество лидов'
-    });
+    const weekdayChart = sheet.insertChart(
+      Charts.newColumnChart()
+        .setDataRange(sheet.getRange(1, 14, weekdayChartData.length, 2))
+        .setOption('title', 'Активность по дням недели')
+        .setOption('titleTextStyle', { fontSize: 14, bold: true })
+        .setOption('legend', { position: 'none' })
+        .setOption('hAxis', { title: 'День недели' })
+        .setOption('vAxis', { title: 'Среднее количество лидов' })
+        .setPosition(3, 18, 0, 0)
+        .setOption('width', 500)
+        .setOption('height', 350)
+        .build()
+    );
+    
+    sheet.getRange(1, 14, weekdayChartData.length, 2).setValues(weekdayChartData);
   }
   
   // 3. Почасовая активность
@@ -773,18 +781,22 @@ function addDailyStatisticsCharts_(sheet, dailyData) {
       dailyData.hourlyAnalysis.map(hour => [hour.displayHour, hour.totalLeads])
     );
     
-    // Создаем диаграмму через универсальную функцию
-    const hourlyChart = createChart_(sheet, 'line', hourlyChartData, {
-      startRow: 1,
-      startCol: 17,
-      title: 'Почасовая активность',
-      position: { row: 25, col: 10 },
-      width: 700,
-      height: 350,
-      legend: 'none',
-      hAxisTitle: 'Час дня',
-      vAxisTitle: 'Количество лидов'
-    });
+    const hourlyChart = sheet.insertChart(
+      Charts.newLineChart()
+        .setDataRange(sheet.getRange(1, 17, hourlyChartData.length, 2))
+        .setOption('title', 'Почасовая активность')
+        .setOption('titleTextStyle', { fontSize: 14, bold: true })
+        .setOption('legend', { position: 'none' })
+        .setOption('hAxis', { title: 'Час дня', slantedText: true })
+        .setOption('vAxis', { title: 'Количество лидов' })
+        .setOption('curveType', 'function')
+        .setPosition(25, 10, 0, 0)
+        .setOption('width', 700)
+        .setOption('height', 350)
+        .build()
+    );
+    
+    sheet.getRange(1, 17, hourlyChartData.length, 2).setValues(hourlyChartData);
   }
   
   // 4. Диаграмма выручки по дням
@@ -796,18 +808,21 @@ function addDailyStatisticsCharts_(sheet, dailyData) {
     );
     
     if (revenueChartData.length > 1) {
-      // Создаем диаграмму через универсальную функцию
-      const revenueChart = createChart_(sheet, 'column', revenueChartData, {
-        startRow: 1,
-        startCol: 20,
-        title: 'Ежедневная выручка',
-        position: { row: 25, col: 18 },
-        width: 600,
-        height: 350,
-        legend: 'none',
-        hAxisTitle: 'Дата',
-        vAxisTitle: 'Выручка, руб.'
-      });
+      const revenueChart = sheet.insertChart(
+        Charts.newColumnChart()
+          .setDataRange(sheet.getRange(1, 20, revenueChartData.length, 2))
+          .setOption('title', 'Ежедневная выручка')
+          .setOption('titleTextStyle', { fontSize: 14, bold: true })
+          .setOption('legend', { position: 'none' })
+          .setOption('hAxis', { title: 'Дата', slantedText: true })
+          .setOption('vAxis', { title: 'Выручка, руб.' })
+          .setPosition(25, 18, 0, 0)
+          .setOption('width', 600)
+          .setOption('height', 350)
+          .build()
+      );
+      
+      sheet.getRange(1, 20, revenueChartData.length, 2).setValues(revenueChartData);
     }
   }
 }

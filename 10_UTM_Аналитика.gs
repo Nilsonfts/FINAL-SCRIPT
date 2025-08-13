@@ -805,16 +805,20 @@ function addUtmAnalysisCharts_(sheet, utmData) {
       utmData.sources.slice(0, 8).map(item => [item.source, item.totalLeads])
     );
     
-    // Создаем диаграмму через универсальную функцию
-    const sourceChart = createChart_(sheet, 'pie', sourceChartData, {
-      startRow: 1,
-      startCol: 8,
-      title: 'Распределение лидов по источникам',
-      position: { row: 3, col: 8 },
-      width: 500,
-      height: 350,
-      legend: 'right'
-    });
+    const sourceChart = sheet.insertChart(
+      Charts.newPieChart()
+        .setDataRange(sheet.getRange(1, 8, sourceChartData.length, 2))
+        .setOption('title', 'Распределение лидов по источникам')
+        .setOption('titleTextStyle', { fontSize: 14, bold: true })
+        .setOption('legend', { position: 'right' })
+        .setOption('chartArea', { width: '80%', height: '80%' })
+        .setPosition(3, 8, 0, 0)
+        .setOption('width', 500)
+        .setOption('height', 350)
+        .build()
+    );
+    
+    sheet.getRange(1, 8, sourceChartData.length, 2).setValues(sourceChartData);
   }
   
   // 2. Столбчатая диаграмма конверсии по медиумам
@@ -823,18 +827,21 @@ function addUtmAnalysisCharts_(sheet, utmData) {
       utmData.mediums.slice(0, 8).map(item => [item.medium, item.conversionRate])
     );
     
-    // Создаем диаграмму через универсальную функцию
-    const mediumChart = createChart_(sheet, 'column', mediumChartData, {
-      startRow: 1,
-      startCol: 11,
-      title: 'Конверсия по медиумам',
-      position: { row: 3, col: 14 },
-      width: 600,
-      height: 350,
-      legend: 'none',
-      hAxisTitle: 'Медиум',
-      vAxisTitle: 'Конверсия, %'
-    });
+    const mediumChart = sheet.insertChart(
+      Charts.newColumnChart()
+        .setDataRange(sheet.getRange(1, 11, mediumChartData.length, 2))
+        .setOption('title', 'Конверсия по медиумам')
+        .setOption('titleTextStyle', { fontSize: 14, bold: true })
+        .setOption('legend', { position: 'none' })
+        .setOption('hAxis', { title: 'Медиум', slantedText: true })
+        .setOption('vAxis', { title: 'Конверсия, %' })
+        .setPosition(3, 14, 0, 0)
+        .setOption('width', 600)
+        .setOption('height', 350)
+        .build()
+    );
+    
+    sheet.getRange(1, 11, mediumChartData.length, 2).setValues(mediumChartData);
   }
   
   // 3. Временная динамика топ источников
@@ -858,18 +865,21 @@ function addUtmAnalysisCharts_(sheet, utmData) {
         timeChartData.push(row);
       });
     
-    // Создаем диаграмму через универсальную функцию
-    const timeChart = createChart_(sheet, 'line', timeChartData, {
-      startRow: 1,
-      startCol: 15,
-      title: 'Динамика топ источников по месяцам',
-      position: { row: 25, col: 8 },
-      width: 700,
-      height: 400,
-      legend: 'top',
-      hAxisTitle: 'Месяц',
-      vAxisTitle: 'Количество лидов'
-    });
+    const timeChart = sheet.insertChart(
+      Charts.newLineChart()
+        .setDataRange(sheet.getRange(1, 15, timeChartData.length, timeChartHeaders.length))
+        .setOption('title', 'Динамика топ источников по месяцам')
+        .setOption('titleTextStyle', { fontSize: 14, bold: true })
+        .setOption('legend', { position: 'top' })
+        .setOption('hAxis', { title: 'Месяц', slantedText: true })
+        .setOption('vAxis', { title: 'Количество лидов' })
+        .setPosition(25, 8, 0, 0)
+        .setOption('width', 700)
+        .setOption('height', 400)
+        .build()
+    );
+    
+    sheet.getRange(1, 15, timeChartData.length, timeChartHeaders.length).setValues(timeChartData);
   }
 }
 

@@ -10,140 +10,21 @@ const CONFIG = {
   TIMEZONE: 'Europe/Moscow',
   FONT: 'PT Sans',
   
-  // ===== ЦВЕТОВАЯ СХЕМА =====
-  COLORS: {
-    HEADER_BG: '#4285f4',
-    HEADER_TEXT: '#ffffff',
-    SUBHEADER_BG: '#f1f3f4',
-    SUBHEADER_TEXT: '#202124',
-    SUCCESS_LIGHT: '#d4edda',
-    ERROR_LIGHT: '#f8d7da',
-    WARNING_LIGHT: '#fff3cd',
-    DATA_BG: '#ffffff',
-    
-    // Для совместимости с утилитами заголовков
-    backgrounds: {
-      header: '#4285f4'
-    }
-  },
-  
-  // ===== УВЕДОМЛЕНИЯ EMAIL =====
-  EMAIL_NOTIFICATIONS: {
-    RECIPIENTS: [] // Добавьте email адреса при необходимости
-  },
-  
-  // ===== НАСТРОЙКИ ОТЛАДКИ =====
-  DEBUG: {
-    enabled: true,
-    log_level: 'INFO' // DEBUG, INFO, WARNING, ERROR
-  },
-  
-  // ===== НАСТРОЙКИ GPT =====
-  GPT: {
-    MODEL: 'gpt-4o-mini',  // Используем более быструю и дешевую модель
-    FALLBACK_MODEL: 'gpt-3.5-turbo',
-    MAX_TOKENS: 1500,      // Уменьшаем токены
-    TEMPERATURE: 0.3
-  },
-  
-  // ===== НАСТРОЙКИ ШРИФТОВ И ФОРМАТИРОВАНИЯ =====
-  DEFAULT_FONT: 'PT Sans',
-  
-  // ===== ГЛОБАЛЬНЫЕ НАСТРОЙКИ ДАННЫХ =====
-  RAW_DATA: 'РАБОЧИЙ АМО', // Основной источник данных для всех модулей
-  
-  // ===== ГЛОБАЛЬНЫЕ ЛИСТЫ ДЛЯ ВСЕХ МОДУЛЕЙ =====
-  SHEETS: {
-    // Основные рабочие листы
-    RAW_DATA: 'РАБОЧИЙ АМО',  // Основной сводный лист со всеми данными
-    WORKING_AMO: 'РАБОЧИЙ АМО', // Псевдоним для совместимости
-    
-    // Аналитические листы
-    AMOCRM_SUMMARY: 'СВОДНАЯ АНАЛИТИКА AMOcrm',
-    REFUSAL_ANALYSIS: 'Причина отказов',
-    CHANNEL_ANALYSIS: 'СРАВНИТЕЛЬНЫЙ АНАЛИЗ',
-    LEADS_ANALYSIS: 'Лиды по каналам',
-    UTM_ANALYSIS: 'UTM аналитика',
-    FIRST_TOUCH_ATTRIBUTION: 'FIRST-TOUCH ANALYSIS',
-    DAILY_STATISTICS: 'Ежедневная статистика',
-    MANAGER_PERFORMANCE: 'Анализ менеджеров',
-    MONTHLY_COMPARISON: 'Сравнение месяцев',
-    CLIENT_ANALYSIS: 'Клиентская аналитика',
-    BOOKING_ANALYSIS: 'Анализ броней',
-    BEAUTY_ANALYTICS: 'Beauty Analytics',
-    
-    // Источники данных
-    AMO_EXPORT: 'Амо Выгрузка',
-    AMO_FULL_EXPORT: 'Выгрузка Амо Полная',
-    RESERVES_RP: 'Reserves RP',
-    GUESTS_RP: 'Guests RP',
-    WEBSITE_FORMS: 'Заявки с Сайта',
-    CALL_TRACKING: 'КоллТрекинг'
-  },
-  
-  // ===== ГЛОБАЛЬНЫЕ АЛИАСЫ ЗАГОЛОВКОВ =====
-  HEADER_ALIASES: {
-    // Основные поля сделки
-    'ID сделки': ['ID', 'id', 'Сделка.ID', 'Идентификатор', 'Номер'],
-    'Название': ['Название', 'Name', 'Сделка.Название', 'Название сделки'],
-    'Статус': ['Статус', 'Status', 'Сделка.Статус', 'Этап сделки'],
-    'Бюджет': ['Бюджет', 'Budget', 'Сделка.Бюджет', 'Сумма', 'Сумма ₽'],
-    'Дата создания': ['Дата создания', 'Created', 'DATE', 'Сделка.Дата создания'],
-    'Дата закрытия': ['Дата закрытия', 'Сделка.Дата закрытия'],
-    'Ответственный': ['Ответственный', 'Кем создана', 'Автор', 'Создатель', 'Менеджер'],
-    
-    // Контактная информация
-    'Контакт': ['Контакт', 'Основной контакт', 'Контакт.ФИО', 'Контакт.Имя', 'ФИО'],
-    'Телефон': ['Телефон', 'Phone', 'Контакт.Телефон', 'Рабочий телефон (контакт)'],
-    'Email': ['Email', 'E-mail', 'Почта', 'Контакт.Email'],
-    
-    // UTM метки
-    'UTM Source': ['utm_source', 'UTM_SOURCE', 'Источник', 'Сделка.utm_source'],
-    'UTM Medium': ['utm_medium', 'UTM_MEDIUM', 'Канал', 'Сделка.utm_medium'],
-    'UTM Campaign': ['utm_campaign', 'UTM_CAMPAIGN', 'Кампания', 'Сделка.utm_campaign'],
-    'UTM Term': ['utm_term', 'UTM_TERM', 'Сделка.utm_term'],
-    'UTM Content': ['utm_content', 'UTM_CONTENT', 'Сделка.utm_content'],
-    
-    // Каналы и источники
-    'Канал': ['Канал', 'Channel', 'Источник', 'Source'],
-    'Причина отказа': ['Причина отказа', 'Отказ', 'Комментарий отказа'],
-    'Комментарий': ['Комментарий', 'Примечания', 'Заметки']
-  },
-  
   // ===== ОСНОВНОЙ СКРИПТ СБОРА ДАННЫХ =====
   mainScript: {
-    // ===== ОСНОВНЫЕ ЛИСТЫ ДАННЫХ =====
-  SHEETS: {
-    // Источники данных AmoCRM
-    AMO_EXPORT: 'Амо Выгрузка',           // Первый лист экспорта AmoCRM
-    AMO_FULL: 'Выгрузка Амо Полная',      // Полный лист экспорта AmoCRM
-    
-    // Дополнительные источники данных
-    SITE_FORMS: 'Заявки с Сайта',         // Заявки с форм сайта
-    RESERVES: 'Reserves RP',              // Данные по резервам
-    GUESTS: 'Guests RP',                  // Данные по гостям
-    CALL_TRACKING: 'КоллТрекинг',         // Данные колл-трекинга
-    
-    // Рабочие листы системы
-    OUT: 'РАБОЧИЙ АМО',                   // Основной рабочий лист с объединёнными данными
-    RAW_DATA: 'РАБОЧИЙ АМО',              // Алиас для аналитических модулей
-    
-    // Аналитические отчёты
-    REFUSAL_ANALYSIS: 'Причина отказов',
-    CHANNEL_ANALYSIS: 'СРАВНИТЕЛЬНЫЙ АНАЛИЗ',
-    FIRST_TOUCH_ATTRIBUTION: 'FIRST-TOUCH ANALYSIS',
-    AMOCRM_SUMMARY: 'СВОДНАЯ АНАЛИТИКА AMOcrm',
-    DAILY_STATISTICS: 'Ежедневная статистика',
-    LEADS_ANALYSIS: 'Лиды по каналам',
-    UTM_ANALYSIS: 'UTM аналитика',
-    MANAGER_PERFORMANCE: 'Анализ менеджеров',
-    MONTHLY_COMPARISON: 'Сравнение месяцев',
-    
-    // Служебные листы
-    MAIN_DASHBOARD: 'Главная',
-    LOGS: 'LOG',
-    DIAGNOSTICS: '_DIAG'
-  },
+    SHEETS: {
+      NEW: 'Амо Выгрузка',
+      FULL: 'Выгрузка Амо Полная', 
+      SITE: 'Заявки с Сайта',
+      RES: 'Reserves RP',
+      GUE: 'Guests RP',
+      CALL: 'КоллТрекинг',
+      OUT: 'РАБОЧИЙ АМО',
+      DIAG: '_DIAG',
+      NEW_ONLY: 'НОВЫЕ',
+      PROBLEM: 'ПРОБЛЕМНЫЕ',
+      LOG: 'LOG'
+    },
     KEY: 'Сделка.ID',
     CLOSED_RE: /(закры|успеш|неуспеш|оплач)/i,
     PHONE_SPLIT_RE: /[;,]/,
@@ -195,30 +76,11 @@ const CONFIG = {
   refusals: {
     SOURCE_SHEET: 'РАБОЧИЙ АМО',
     OUTPUT_SHEET: 'Причина отказов',
-    GPT_MODEL: 'gpt-4o-mini',  // Используем быструю модель
-    FALLBACK_MODEL: 'gpt-3.5-turbo',
+    GPT_MODEL: 'gpt-4o',
+    FALLBACK_MODEL: 'gpt-4o-mini',
     MAX_REASONS: 10,
     MIN_FREQUENCY: 2,
-    SAMPLE_SIZE: 50,
-    
-    // ТОЧНЫЕ СТАТУСЫ ОТКАЗОВ ДЛЯ ВАШЕГО ПРОЕКТА
-    REFUSAL_STATUSES: [
-      'Закрыто и не реализовано'  // Ваш точный статус из колонки "Статус"
-    ],
-    
-    // Колонка со статусом - ищем по названию "Статус"
-    STATUS_COLUMN_NAME: 'Статус',
-    
-    // Колонка с причинами отказов - ТОЧНОЕ название из ваших листов
-    REFUSAL_REASON_COLUMN_NAME: 'Причина отказа',
-    
-    // Альтернативные названия для поиска причин отказов
-    REFUSAL_REASON_ALIASES: [
-      'Причина отказа',
-      'Комментарий МОБ', 
-      'Примечания',
-      'Комментарий'
-    ]
+    SAMPLE_SIZE: 50
   },
 
   // ===== СРАВНИТЕЛЬНЫЙ АНАЛИЗ КАНАЛОВ =====

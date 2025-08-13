@@ -807,16 +807,20 @@ function addFirstTouchCharts_(sheet, firstTouchData) {
       firstTouchData.firstTouchAnalysis.slice(0, 8).map(item => [item.channel, item.totalFirstTouches])
     );
     
-    // Создаем диаграмму через универсальную функцию
-    const firstTouchChart = createChart_(sheet, 'pie', firstTouchChartData, {
-      startRow: 1,
-      startCol: 9,
-      title: 'Распределение первых касаний по каналам',
-      position: { row: 3, col: 9 },
-      width: 500,
-      height: 350,
-      legend: 'right'
-    });
+    const firstTouchChart = sheet.insertChart(
+      Charts.newPieChart()
+        .setDataRange(sheet.getRange(1, 9, firstTouchChartData.length, 2))
+        .setOption('title', 'Распределение первых касаний по каналам')
+        .setOption('titleTextStyle', { fontSize: 14, bold: true })
+        .setOption('legend', { position: 'right' })
+        .setOption('chartArea', { width: '80%', height: '80%' })
+        .setPosition(3, 9, 0, 0)
+        .setOption('width', 500)
+        .setOption('height', 350)
+        .build()
+    );
+    
+    sheet.getRange(1, 9, firstTouchChartData.length, 2).setValues(firstTouchChartData);
   }
   
   // 2. Столбчатая диаграмма конверсии первых касаний
@@ -825,18 +829,21 @@ function addFirstTouchCharts_(sheet, firstTouchData) {
       firstTouchData.firstTouchAnalysis.slice(0, 10).map(item => [item.channel, item.conversionRate])
     );
     
-    // Создаем диаграмму через универсальную функцию
-    const conversionChart = createChart_(sheet, 'column', conversionChartData, {
-      startRow: 1,
-      startCol: 12,
-      title: 'Конверсия первых касаний по каналам',
-      position: { row: 3, col: 15 },
-      width: 600,
-      height: 350,
-      legend: 'none',
-      hAxisTitle: 'Канал',
-      vAxisTitle: 'Конверсия, %'
-    });
+    const conversionChart = sheet.insertChart(
+      Charts.newColumnChart()
+        .setDataRange(sheet.getRange(1, 12, conversionChartData.length, 2))
+        .setOption('title', 'Конверсия первых касаний по каналам')
+        .setOption('titleTextStyle', { fontSize: 14, bold: true })
+        .setOption('legend', { position: 'none' })
+        .setOption('hAxis', { title: 'Канал', slantedText: true })
+        .setOption('vAxis', { title: 'Конверсия, %' })
+        .setPosition(3, 15, 0, 0)
+        .setOption('width', 600)
+        .setOption('height', 350)
+        .build()
+    );
+    
+    sheet.getRange(1, 12, conversionChartData.length, 2).setValues(conversionChartData);
   }
   
   // 3. Диаграмма времени до конверсии
@@ -847,18 +854,21 @@ function addFirstTouchCharts_(sheet, firstTouchData) {
         .map(([interval, count]) => [interval, count])
     );
     
-    // Создаем диаграмму через универсальную функцию
-    const timeDistChart = createChart_(sheet, 'column', timeDistChartData, {
-      startRow: 1,
-      startCol: 15,
-      title: 'Распределение времени до конверсии',
-      position: { row: 25, col: 9 },
-      width: 700,
-      height: 350,
-      legend: 'none',
-      hAxisTitle: 'Временной интервал',
-      vAxisTitle: 'Количество конверсий'
-    });
+    const timeDistChart = sheet.insertChart(
+      Charts.newColumnChart()
+        .setDataRange(sheet.getRange(1, 15, timeDistChartData.length, 2))
+        .setOption('title', 'Распределение времени до конверсии')
+        .setOption('titleTextStyle', { fontSize: 14, bold: true })
+        .setOption('legend', { position: 'none' })
+        .setOption('hAxis', { title: 'Временной интервал', slantedText: true })
+        .setOption('vAxis', { title: 'Количество конверсий' })
+        .setPosition(25, 9, 0, 0)
+        .setOption('width', 700)
+        .setOption('height', 350)
+        .build()
+    );
+    
+    sheet.getRange(1, 15, timeDistChartData.length, 2).setValues(timeDistChartData);
   }
   
   // 4. Диаграмма количества касаний
@@ -869,16 +879,20 @@ function addFirstTouchCharts_(sheet, firstTouchData) {
         .map(([range, count]) => [range, count])
     );
     
-    // Создаем диаграмму через универсальную функцию
-    const touchPointsChart = createChart_(sheet, 'pie', touchPointsChartData, {
-      startRow: 1,
-      startCol: 18,
-      title: 'Распределение клиентов по количеству касаний',
-      position: { row: 25, col: 18 },
-      width: 500,
-      height: 350,
-      legend: 'right'
-    });
+    const touchPointsChart = sheet.insertChart(
+      Charts.newPieChart()
+        .setDataRange(sheet.getRange(1, 18, touchPointsChartData.length, 2))
+        .setOption('title', 'Распределение клиентов по количеству касаний')
+        .setOption('titleTextStyle', { fontSize: 14, bold: true })
+        .setOption('legend', { position: 'right' })
+        .setOption('chartArea', { width: '80%', height: '80%' })
+        .setPosition(25, 18, 0, 0)
+        .setOption('width', 500)
+        .setOption('height', 350)
+        .build()
+    );
+    
+    sheet.getRange(1, 18, touchPointsChartData.length, 2).setValues(touchPointsChartData);
   }
 }
 
