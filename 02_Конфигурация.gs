@@ -51,6 +51,56 @@ const CONFIG = {
     DIAGNOSTICS: '_DIAG'
   },
   
+  // ===== СТРУКТУРА КОЛОНОК "РАБОЧИЙ АМО" =====
+  WORKING_AMO_COLUMNS: {
+    // Основная информация о сделке (A-K)
+    ID: 'A',                          // Сделка.ID
+    NAME: 'B',                        // Сделка.Название  
+    STATUS: 'C',                      // Сделка.Статус
+    REFUSAL_REASON: 'D',              // Сделка.Причина отказа
+    LEAD_TYPE: 'E',                   // Сделка.Тип лида
+    GUEST_STATUS: 'F',                // Сделка.R.Статусы гостей
+    RESPONSIBLE: 'G',                 // Сделка.Ответственный
+    TAGS: 'H',                        // Сделка.Теги
+    BUDGET: 'I',                      // Сделка.Бюджет
+    CREATED_AT: 'J',                  // Сделка.Дата создания
+    CLOSED_AT: 'K',                   // Сделка.Дата закрытия
+    
+    // Контактная информация и счета (L-P)
+    MANGO_LINE2: 'L',                 // Контакт.Номер линии MANGO OFFICE
+    MANGO_LINE1: 'M',                 // Сделка.Номер линии MANGO OFFICE  
+    CONTACT_NAME: 'N',                // Контакт.ФИО
+    PHONE: 'O',                       // Контакт.Телефон
+    BILL_FACT: 'P',                   // Счет факт (НОВАЯ КОЛОНКА)
+    
+    // Аналитика и UTM (Q-AO)
+    DATE: 'Q',                        // Сделка.DATE
+    TIME: 'R',                        // Сделка.TIME
+    CITY_TAG: 'S',                    // Сделка.R.Тег города
+    BOOKING_DATE: 'T',                // Сделка.Дата брони
+    SOFTWARE: 'U',                    // Сделка.ПО
+    REFERRAL_TYPE: 'V',               // Сделка.Сарафан гости
+    BAR_NAME: 'W',                    // Сделка.Бар (deal)
+    DEAL_SOURCE: 'X',                 // Сделка.R.Источник сделки
+    BUTTON_TEXT: 'Y',                 // Сделка.BUTTON_TEXT
+    YM_CLIENT_ID: 'Z',                // Сделка.YM_CLIENT_ID
+    GA_CLIENT_ID: 'AA',               // Сделка.GA_CLIENT_ID
+    UTM_SOURCE: 'AB',                 // Сделка.UTM_SOURCE
+    UTM_MEDIUM: 'AC',                 // Сделка.UTM_MEDIUM
+    UTM_CAMPAIGN: 'AD',               // Сделка.UTM_CAMPAIGN
+    UTM_CONTENT: 'AE',                // Сделка.UTM_CONTENT
+    UTM_TERM: 'AF',                   // Сделка.UTM_TERM
+    REFERER: 'AG',                    // Сделка.REFERER
+    FORMID: 'AH',                     // Сделка.FORMID
+    FORMNAME: 'AI',                   // Сделка.FORMNAME
+    YM_UID: 'AJ',                     // Сделка._ym_uid
+    NOTES: 'AK',                      // Примечания
+    DAYS_TO_BOOKING: 'AL',            // Дни до брони
+    CHANNEL_GROUP: 'AM',              // Группа каналов
+    SUCCESS_FLAG: 'AN',               // Флаг успешности
+    MONTH_YEAR: 'AO'                  // Месяц-Год
+  },
+  
   // ===== ОСНОВНОЙ СКРИПТ СБОРА ДАННЫХ =====
   mainScript: {
     SHEETS: {

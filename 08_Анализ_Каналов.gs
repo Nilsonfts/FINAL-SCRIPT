@@ -52,52 +52,173 @@ function analyzeChannelPerformance() {
  * @private
  */
 function getChannelPerformanceData_() {
-  const rawSheet = getSheet_(CONFIG.SHEETS.RAW_DATA);
-  if (!rawSheet) {
-    throw new Error('Лист с сырыми данными не найден');
+  try {
+    // Используем новую функцию для чтения РАБОЧИЙ АМО
+    const amoData = readWorkingAmo();
+    
+    if (!amoData || amoData.length === 0) {
+      logWarning_('CHANNEL_ANALYSIS', 'Нет данных в РАБОЧИЙ АМО');
+      return null;
+    }
+    
+    // Анализируем данные за всё время
+    const allTimeData = analyzeChannelDataAllTime_(amoData);
+    
+    // Анализируем данные по месяцам
+    const monthlyData = analyzeChannelDataByMonth_(amoData);
+    
+    // Тренды каналов
+    const channelTrends = analyzeChannelTrends_(amoData);
+    
+    // Корреляционный анализ
+    const correlationData = analyzeChannelCorrelation_(amoData);
+    
+    return {
+      allTimeData: allTimeData,
+      monthlyData: monthlyData,
+      channelTrends: channelTrends,
+      correlationData: correlationData,
+      totalRecords: amoData.length,
+      analysisDate: getCurrentDateMoscow_()
+    };
+    
+  } catch (error) {
+    logError_('CHANNEL_ANALYSIS', 'Ошибка получения данных каналов', error);
+    throw error;
   }
-  
-  const rawData = getSheetData_(rawSheet);
-  if (rawData.length <= 1) return null;
-  
-  const headers = rawData[0];
-  const rows = rawData.slice(1);
-  
-  // Анализируем данные за всё время
-  const allTimeData = analyzeChannelDataAllTime_(headers, rows);
-  
-  // Анализируем данные по месяцам
-  const monthlyData = analyzeChannelDataByMonth_(headers, rows);
-  
-  // Тренды каналов
-  const channelTrends = analyzeChannelTrends_(headers, rows);
-  
-  // Корреляционный анализ
-  const correlationData = analyzeChannelCorrelation_(headers, rows);
-  
-  return {
-    allTimeData: allTimeData,
-    monthlyData: monthlyData,
-    channelTrends: channelTrends,
-    correlationData: correlationData,
-    totalRecords: rows.length,
-    analysisDate: getCurrentDateMoscow_()
-  };
 }
 
 /**
  * Анализирует данные каналов за всё время
- * @param {Array} headers - Заголовки таблицы
- * @param {Array} rows - Строки данных
+ * @param {Array} amoData - Данные из РАБОЧИЙ АМО
  * @returns {Array} Данные по каналам за всё время
  * @private
  */
-function analyzeChannelDataAllTime_(headers, rows) {
+function analyzeChannelDataAllTime_(amoData) {
   const channelStats = {};
   
-  // Получаем индексы важных колонок
-  const channelIndex = findHeaderIndex_(headers, 'Канал');
-  const statusIndex = findHeaderIndex_(headers, 'Статус');
+  amoData.forEach(deal => {
+    // Определяем канал из различных источников
+    let channel = determineChannel_(deal);
+    if (!channel) channel = 'Неопределенный';
+    
+    // Инициализируем статистику канала
+    if (!channelStats[channel]) {
+      channelStats[channel] = {
+        total: 0,
+        successful: 0,
+        revenue: 0,
+        leads: 0,
+        avgBudget: 0,
+        conversion: 0
+      };
+    }
+    
+    const stats = channelStats[channel];
+    stats.total++;
+    
+    // Проверяем успешность сделки
+    if (isSuccessfulDeal(deal.status)) {
+      stats.successful++;
+      // Используем счет факт или бюджет
+      const amount = parseFloat(deal.bill_fact) || parseFloat(deal.budget) || 0;
+      stats.revenue += amount;
+    }
+    
+    // Учитываем бюджет для расчета среднего
+    const budget = parseFloat(deal.budget) || 0;
+    if (budget > 0) {
+      stats.avgBudget = (stats.avgBudget * (stats.total - 1) + budget) / stats.total;
+    }
+  });
+  
+  // Рассчитываем конверсии и возвращаем отсортированный результат
+  return Object.entries(channelStats).map(([channel, stats]) => {
+    stats.conversion = stats.total > 0 ? (stats.successful / stats.total * 100) : 0;
+    return {
+      channel,
+      ...stats
+    };
+  }).sort((a, b) => b.total - a.total);
+}
+
+/**
+ * Определяет канал привлечения по данным сделки
+ * @param {Object} deal - Данные сделки
+ * @returns {string} Название канала
+ * @private
+ */
+function determineChannel_(deal) {
+  // Приоритет источников для определения канала:
+  // 1. UTM_SOURCE
+  // 2. Deal Source (Источник сделки)
+  // 3. Referer
+  // 4. Button Text
+  // 5. Form Name
+  
+  if (deal.utm_source && deal.utm_source.trim()) {
+    return normalizeChannelName_(deal.utm_source);
+  }
+  
+  if (deal.deal_source && deal.deal_source.trim()) {
+    return normalizeChannelName_(deal.deal_source);
+  }
+  
+  if (deal.referer && deal.referer.trim()) {
+    return normalizeChannelName_(deal.referer);
+  }
+  
+  if (deal.button_text && deal.button_text.trim()) {
+    return normalizeChannelName_(deal.button_text);
+  }
+  
+  if (deal.formname && deal.formname.trim()) {
+    return normalizeChannelName_(deal.formname);
+  }
+  
+  return 'Неопределенный';
+}
+
+/**
+ * Нормализует название канала
+ * @param {string} channelName - Исходное название
+ * @returns {string} Нормализованное название
+ * @private
+ */
+function normalizeChannelName_(channelName) {
+  if (!channelName) return 'Неопределенный';
+  
+  const name = String(channelName).toLowerCase().trim();
+  
+  // Маппинг популярных каналов
+  const channelMapping = {
+    'yandex': 'Яндекс',
+    'google': 'Google',
+    '2gis': '2ГИС',
+    'telegram': 'Telegram',
+    'instagram': 'Instagram',
+    'vk': 'ВКонтакте',
+    'site': 'Основной сайт',
+    'сайт': 'Основной сайт',
+    'direct': 'Прямые заходы',
+    'phone': 'Телефонные звонки'
+  };
+  
+  // Ищем точное соответствие
+  if (channelMapping[name]) {
+    return channelMapping[name];
+  }
+  
+  // Ищем частичное соответствие
+  for (const [key, value] of Object.entries(channelMapping)) {
+    if (name.includes(key)) {
+      return value;
+    }
+  }
+  
+  // Возвращаем оригинальное название с заглавной буквы
+  return channelName.charAt(0).toUpperCase() + channelName.slice(1);
+}
   const budgetIndex = findHeaderIndex_(headers, 'Бюджет');
   const createdIndex = findHeaderIndex_(headers, 'Дата создания');
   const sourceIndex = findHeaderIndex_(headers, 'UTM Source');

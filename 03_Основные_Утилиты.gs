@@ -1,8 +1,115 @@
 /**
  * 🛠️ УНИВЕРСАЛЬНЫЕ ФУНКЦИИ ДЛЯ ВСЕХ ОТЧЁТОВ
  * Все общие утилиты в одном месте
- * Версия: 2.0
+ * Версия: 2.1 (обновлено для РАБОЧИЙ АМО)
  */
+
+// ===== ФУНКЦИИ ДЛЯ РАБОТЫ С "РАБОЧИЙ АМО" =====
+
+/**
+ * Чтение данных из "РАБОЧИЙ АМО" с использованием новой структуры
+ */
+function readWorkingAmo() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(CONFIG.SHEETS.WORKING_AMO);
+  
+  if (!sheet) {
+    throw new Error(`Лист "${CONFIG.SHEETS.WORKING_AMO}" не найден. Сначала запустите runMergedAmoAnalysis()`);
+  }
+  
+  const data = sheet.getDataRange().getValues();
+  if (data.length < 2) return [];
+  
+  // Преобразуем данные в объекты с использованием структуры колонок
+  const result = [];
+  const cols = CONFIG.WORKING_AMO_COLUMNS;
+  
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    result.push({
+      id: getColumnValue(row, cols.ID),
+      name: getColumnValue(row, cols.NAME),
+      status: getColumnValue(row, cols.STATUS),
+      refusal_reason: getColumnValue(row, cols.REFUSAL_REASON),
+      lead_type: getColumnValue(row, cols.LEAD_TYPE),
+      guest_status: getColumnValue(row, cols.GUEST_STATUS),
+      responsible: getColumnValue(row, cols.RESPONSIBLE),
+      tags: getColumnValue(row, cols.TAGS),
+      budget: getColumnValue(row, cols.BUDGET),
+      created_at: getColumnValue(row, cols.CREATED_AT),
+      closed_at: getColumnValue(row, cols.CLOSED_AT),
+      mango_line2: getColumnValue(row, cols.MANGO_LINE2),
+      mango_line1: getColumnValue(row, cols.MANGO_LINE1),
+      contact_name: getColumnValue(row, cols.CONTACT_NAME),
+      phone: getColumnValue(row, cols.PHONE),
+      bill_fact: getColumnValue(row, cols.BILL_FACT),
+      date: getColumnValue(row, cols.DATE),
+      time: getColumnValue(row, cols.TIME),
+      city_tag: getColumnValue(row, cols.CITY_TAG),
+      booking_date: getColumnValue(row, cols.BOOKING_DATE),
+      software: getColumnValue(row, cols.SOFTWARE),
+      referral_type: getColumnValue(row, cols.REFERRAL_TYPE),
+      bar_name: getColumnValue(row, cols.BAR_NAME),
+      deal_source: getColumnValue(row, cols.DEAL_SOURCE),
+      button_text: getColumnValue(row, cols.BUTTON_TEXT),
+      ym_client_id: getColumnValue(row, cols.YM_CLIENT_ID),
+      ga_client_id: getColumnValue(row, cols.GA_CLIENT_ID),
+      utm_source: getColumnValue(row, cols.UTM_SOURCE),
+      utm_medium: getColumnValue(row, cols.UTM_MEDIUM),
+      utm_campaign: getColumnValue(row, cols.UTM_CAMPAIGN),
+      utm_content: getColumnValue(row, cols.UTM_CONTENT),
+      utm_term: getColumnValue(row, cols.UTM_TERM),
+      referer: getColumnValue(row, cols.REFERER),
+      formid: getColumnValue(row, cols.FORMID),
+      formname: getColumnValue(row, cols.FORMNAME),
+      ym_uid: getColumnValue(row, cols.YM_UID),
+      notes: getColumnValue(row, cols.NOTES),
+      days_to_booking: getColumnValue(row, cols.DAYS_TO_BOOKING),
+      channel_group: getColumnValue(row, cols.CHANNEL_GROUP),
+      success_flag: getColumnValue(row, cols.SUCCESS_FLAG),
+      month_year: getColumnValue(row, cols.MONTH_YEAR)
+    });
+  }
+  
+  return result;
+}
+
+/**
+ * Получение значения колонки по букве (A, B, C и т.д.)
+ */
+function getColumnValue(row, columnLetter) {
+  const index = columnLetterToIndex(columnLetter);
+  return row[index] || '';
+}
+
+/**
+ * Преобразование буквы колонки в индекс (A=0, B=1, C=2, и т.д.)
+ */
+function columnLetterToIndex(letter) {
+  if (!letter) return 0;
+  
+  let result = 0;
+  for (let i = 0; i < letter.length; i++) {
+    result = result * 26 + (letter.charCodeAt(i) - 64);
+  }
+  return result - 1;
+}
+
+/**
+ * Проверка является ли сделка успешной по новым статусам
+ */
+function isSuccessfulDeal(status) {
+  if (!status) return false;
+  
+  const successStatuses = [
+    'Оплачено',
+    'успешно РЕАЛИЗОВАНО', 
+    'успешно в РП'
+  ];
+  
+  const cleanStatus = String(status).replace(/^ВСЕ БАРЫ СЕТИ\s*\/\s*/, '').trim();
+  return successStatuses.includes(cleanStatus);
+}
 
 // ===== ЧТЕНИЕ И ОБРАБОТКА ДАННЫХ =====
 
