@@ -10,6 +10,47 @@ const CONFIG = {
   TIMEZONE: 'Europe/Moscow',
   FONT: 'PT Sans',
   
+  // ===== ОТЛАДКА И ЛОГИРОВАНИЕ =====
+  DEBUG: {
+    enabled: true,
+    verbose: false
+  },
+  
+  // ===== ГЛОБАЛЬНЫЕ ИМЕНА ЛИСТОВ =====
+  SHEETS: {
+    // Исходные данные
+    AMO_EXPORT: 'Амо Выгрузка',
+    AMO_FULL: 'Выгрузка Амо Полная',
+    WEB_FORMS: 'Заявки с Сайта',
+    RESERVES: 'Reserves RP',
+    GUESTS: 'Guests RP',
+    CALLTRACKING: 'КоллТрекинг',
+    
+    // Рабочие листы
+    WORKING_AMO: 'РАБОЧИЙ АМО',
+    
+    // Аналитические листы
+    AMOCRM_SUMMARY: 'AmoCRM: Сводка',
+    REFUSAL_ANALYSIS: 'Анализ причин отказов',
+    CHANNEL_ANALYSIS: 'Анализ каналов',
+    LEADS_ANALYSIS: 'Лиды по каналам', 
+    UTM_ANALYSIS: 'UTM аналитика',
+    FIRST_TOUCH: 'Первые касания',
+    DAILY_STATISTICS: 'Ежедневная статистика',
+    MONTHLY_COMPARISON: 'Сравнение месяцев',
+    MANAGER_PERFORMANCE: 'Эффективность менеджеров',
+    
+    // Системные листы
+    MAIN_DASHBOARD: 'Главная',
+    ADVANCED_ANALYTICS: 'Продвинутая Аналитика',
+    SYSTEM_LOGS: 'Системные логи',
+    
+    // Подмножества данных
+    NEW_ONLY: 'НОВЫЕ',
+    PROBLEMS: 'ПРОБЛЕМНЫЕ',
+    DIAGNOSTICS: '_DIAG'
+  },
+  
   // ===== ОСНОВНОЙ СКРИПТ СБОРА ДАННЫХ =====
   mainScript: {
     SHEETS: {

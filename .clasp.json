@@ -1,0 +1,13 @@
+{
+  "scriptId": "1u77EB0EuYkyO21LhwjVjLJOgHy_dyHZ7TL0rc8yAbbsuLRZG20l0vfUH",
+  "rootDir": "/workspaces/FINAL-SCRIPT",
+  "fileExtension": "gs",
+  "filePushOrder": [
+    "02_Конфигурация.gs",
+    "03_Основные_Утилиты.gs", 
+    "04_Утилиты_Дат.gs",
+    "05_Утилиты_Заголовков.gs",
+    "06_Утилиты_UTM.gs",
+    "01_Главный_Скрипт.gs"
+  ]
+}

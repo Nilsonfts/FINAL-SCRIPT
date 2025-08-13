@@ -24,8 +24,12 @@ function initializeSystem() {
     // 4. Настраиваем триггеры
     setupTriggers_();
     
-    // 5. Создаём меню
-    createCustomMenu_();
+    // 5. Создаём меню (только если UI доступен)
+    try {
+      createCustomMenu_();
+    } catch (uiError) {
+      logInfo_('SYSTEM_INIT', 'Создание меню пропущено (недоступен UI контекст)');
+    }
     
     // 6. Выполняем первичную синхронизацию
     logInfo_('SYSTEM_INIT', 'Выполнение первичной синхронизации данных');
@@ -36,24 +40,33 @@ function initializeSystem() {
     
     logInfo_('SYSTEM_INIT', 'Система успешно инициализирована');
     
-    // Показываем сообщение пользователю
-    SpreadsheetApp.getUi().alert(
-      'Система инициализирована!',
-      'Все модули настроены и готовы к работе.\n\n' +
-      'Автоматическая синхронизация данных настроена на каждые 15 минут.\n' +
-      'Аналитические отчёты обновляются ежедневно в 08:00.\n\n' +
-      'Используйте меню "🔄 Аналитика" для ручного управления.',
-      SpreadsheetApp.getUi().ButtonSet.OK
-    );
+    // Показываем сообщение пользователю (только если UI доступен)
+    try {
+      SpreadsheetApp.getUi().alert(
+        'Система инициализирована!',
+        'Все модули настроены и готовы к работе.\n\n' +
+        'Автоматическая синхронизация данных настроена на каждые 15 минут.\n' +
+        'Аналитические отчёты обновляются ежедневно в 08:00.\n\n' +
+        'Используйте меню "🔄 Аналитика" для ручного управления.',
+        SpreadsheetApp.getUi().ButtonSet.OK
+      );
+    } catch (uiError) {
+      logInfo_('SYSTEM_INIT', 'UI уведомление пропущено (недоступен UI контекст)');
+    }
     
   } catch (error) {
     logError_('SYSTEM_INIT', 'Критическая ошибка инициализации системы', error);
     
-    SpreadsheetApp.getUi().alert(
-      'Ошибка инициализации!',
-      `Произошла ошибка при инициализации системы:\n\n${error.message}\n\nПроверьте настройки конфигурации и попробуйте снова.`,
-      SpreadsheetApp.getUi().ButtonSet.OK
-    );
+    // Пытаемся показать ошибку (только если UI доступен)
+    try {
+      SpreadsheetApp.getUi().alert(
+        'Ошибка инициализации!',
+        `Произошла ошибка при инициализации системы:\n\n${error.message}\n\nПроверьте настройки конфигурации и попробуйте снова.`,
+        SpreadsheetApp.getUi().ButtonSet.OK
+      );
+    } catch (uiError) {
+      logError_('SYSTEM_INIT', 'UI ошибка пропущена (недоступен UI контекст)', uiError);
+    }
     
     throw error;
   }
@@ -64,143 +77,92 @@ function initializeSystem() {
  * Вызывается ежедневно по расписанию
  */
 /**
- * Основная функция полного обновления аналитики
- * Интегрированная версия с продвинутой логикой обработки данных
+ * 🎯 УПРОЩЕННАЯ ОСНОВНАЯ ФУНКЦИЯ - ФОКУС НА РАБОЧИЙ АМО
+ * Только сборка файла с правильным оформлением как на картинках
  */
 function runFullAnalyticsUpdate() {
   try {
-    logInfo_('FULL_UPDATE', 'Начало полного обновления аналитики');
+    logInfo_('FULL_UPDATE', 'Начало сборки файла РАБОЧИЙ АМО');
     const startTime = new Date();
     
-    // 1. Инициализация рабочих данных
-    logInfo_('FULL_UPDATE', 'Инициализация рабочих структур данных');
-    const workingData = initializeWorkingData_();
+    // 🎯 ЕДИНСТВЕННАЯ ЗАДАЧА: Собираем файл РАБОЧИЙ АМО с правильным оформлением
+    buildWorkingAmoFile();
     
-    // 2. Загрузка и обогащение данных
-    logInfo_('FULL_UPDATE', 'Загрузка данных из всех источников');
-    const enrichedData = loadAndEnrichAllData_(workingData);
+    const endTime = new Date();
+    const duration = Math.round((endTime - startTime) / 1000);
     
-    // 3. Обновление всех аналитических модулей
-    const updateResults = {
-      data_processing: false,
-      amocrm_summary: false,
-      refusal_analysis: false,
-      channel_analysis: false,
-      lead_analysis: false,
-      utm_analysis: false,
-      first_touch: false,
-      daily_stats: false,
-      monthly_comparison: false,
-      manager_performance: false,
-      client_analysis: false,
-      booking_analysis: false,
-      beauty_analytics: false
-    };
-    
-    // Основная обработка данных (интегрированная логика из buildWorkingFromFive)
-    try {
-      logInfo_('FULL_UPDATE', 'Обработка и нормализация данных');
-      processAdvancedDataLogic_(enrichedData);
-      updateResults.data_processing = true;
-    } catch (error) {
-      logError_('FULL_UPDATE', 'Ошибка обработки данных', error);
-    }
-    
-    // AmoCRM сводка
-    try {
-      logInfo_('FULL_UPDATE', 'Обновление сводной аналитики AmoCRM');
-      updateAmoCrmSummary();
-      updateResults.amocrm_summary = true;
-    } catch (error) {
-      logError_('FULL_UPDATE', 'Ошибка обновления AmoCRM сводки', error);
-    }
-    
-    // Анализ причин отказов
-    try {
-      logInfo_('FULL_UPDATE', 'Анализ причин отказов');
-      analyzeRefusalReasons();
-      updateResults.refusal_analysis = true;
-    } catch (error) {
-      logError_('FULL_UPDATE', 'Ошибка анализа причин отказов', error);
-    }
-    
-    // Анализ каналов
-    try {
-      logInfo_('FULL_UPDATE', 'Анализ эффективности каналов');
-      analyzeChannelPerformance();
-      updateResults.channel_analysis = true;
-    } catch (error) {
-      logError_('FULL_UPDATE', 'Ошибка анализа каналов', error);
-    }
-    
-    // Анализ лидов
-    try {
-      logInfo_('FULL_UPDATE', 'Анализ лидов по каналам');
-      analyzeLeadsByChannels();
-      updateResults.lead_analysis = true;
-    } catch (error) {
-      logError_('FULL_UPDATE', 'Ошибка анализа лидов', error);
-    }
-    
-    // UTM анализ
-    try {
-      logInfo_('FULL_UPDATE', 'UTM аналитика');
-      analyzeUtmPerformance();
-      updateResults.utm_analysis = true;
-    } catch (error) {
-      logError_('FULL_UPDATE', 'Ошибка UTM аналитики', error);
-    }
-    
-    // Анализ первых касаний
-    try {
-      logInfo_('FULL_UPDATE', 'Анализ первых касаний');
-      analyzeFirstTouchAttribution();
-      updateResults.first_touch = true;
-    } catch (error) {
-      logError_('FULL_UPDATE', 'Ошибка анализа первых касаний', error);
-    }
-    
-    // Ежедневная статистика
-    try {
-      logInfo_('FULL_UPDATE', 'Ежедневная статистика');
-      updateDailyStatistics();
-      updateResults.daily_stats = true;
-    } catch (error) {
-      logError_('FULL_UPDATE', 'Ошибка ежедневной статистики', error);
-    }
-    
-    // 3. Обновление главного дашборда
-    try {
-      logInfo_('FULL_UPDATE', 'Обновление главного дашборда');
-      updateMainDashboard_(updateResults);
-    } catch (error) {
-      logError_('FULL_UPDATE', 'Ошибка обновления главного дашборда', error);
-    }
-    
-    // 4. Отправка отчётов
-    try {
-      logInfo_('FULL_UPDATE', 'Отправка email отчётов');
-      sendDailyReports_(updateResults);
-    } catch (error) {
-      logError_('FULL_UPDATE', 'Ошибка отправки отчётов', error);
-    }
-    
-    const duration = (new Date() - startTime) / 1000;
-    const successCount = Object.values(updateResults).filter(Boolean).length;
-    const totalModules = Object.keys(updateResults).length;
-    
-    logInfo_('FULL_UPDATE', `Полное обновление завершено за ${duration}с. Успешно: ${successCount}/${totalModules} модулей`);
-    
-    return {
-      success: true,
-      duration: duration,
-      updateResults: updateResults,
-      successCount: successCount,
-      totalModules: totalModules
-    };
+    logInfo_('FULL_UPDATE', `Файл РАБОЧИЙ АМО собран за ${duration} сек`);
     
   } catch (error) {
-    logError_('FULL_UPDATE', 'Критическая ошибка полного обновления', error);
+    logError_('FULL_UPDATE', 'Критическая ошибка сборки РАБОЧИЙ АМО', error);
+    throw error;
+  }
+    
+// ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ СИСТЕМЫ =====
+
+/**
+ * Функции логирования (упрощенные версии)
+ */
+function logInfo_(module, message, details = null) {
+  const timestamp = new Date().toLocaleTimeString();
+  console.log(`${timestamp}\tИнфо\t[${module}] ${message}${details ? ': ' + JSON.stringify(details) : ''}`);
+}
+
+function logError_(module, message, error = null) {
+  const timestamp = new Date().toLocaleTimeString();
+  console.error(`${timestamp}\tОшибка\t[ERROR] ${module}: ${message}${error ? ' [' + error.toString() + ']' : ''}`);
+}
+
+function logWarning_(module, message, details = null) {
+  const timestamp = new Date().toLocaleTimeString();
+  console.warn(`${timestamp}\tПредупреждение\t[WARNING] ${module}: ${message}${details ? ': ' + JSON.stringify(details) : ''}`);
+}
+
+/**
+ * Проверяет конфигурацию системы
+ */
+function validateConfiguration_() {
+  logInfo_('CONFIG_CHECK', 'Проверка конфигурации системы');
+  
+  // Проверяем основные настройки
+  if (!CONFIG) {
+    throw new Error('Конфигурация CONFIG не найдена');
+  }
+  
+  if (!CONFIG.SHEETS) {
+    throw new Error('Секция SHEETS не найдена в конфигурации');
+  }
+  
+  logInfo_('CONFIG_CHECK', 'Конфигурация валидна');
+}
+
+/**
+ * 🎯 ГЛАВНАЯ ФУНКЦИЯ СБОРКИ РАБОЧЕГО АМО
+ * Создает итоговый файл с точным оформлением как на картинках
+ */
+function buildWorkingAmoFile() {
+  console.log('🎯 Начинаем сборку файла РАБОЧИЙ АМО');
+  
+  try {
+    const workingSheet = getSheet_(getSheetName_('WORKING_AMO'));
+    workingSheet.clear();
+    
+    // 1. Создаем заголовки с точным оформлением как на картинках
+    createWorkingAmoHeaders_(workingSheet);
+    
+    // 2. Загружаем и объединяем все данные
+    const consolidatedData = consolidateAllDataSources_();
+    
+    // 3. Записываем данные в файл
+    writeConsolidatedData_(workingSheet, consolidatedData);
+    
+    // 4. Применяем форматирование как на картинках
+    applyWorkingAmoFormatting_(workingSheet, consolidatedData.length);
+    
+    console.log(`✅ Файл РАБОЧИЙ АМО собран: ${consolidatedData.length} записей`);
+    
+  } catch (error) {
+    console.error('❌ Ошибка сборки РАБОЧИЙ АМО:', error);
     throw error;
   }
 }
@@ -1218,9 +1180,10 @@ function loadAndEnrichAllData_(workingData) {
 function loadMainDataSources_() {
   const sources = {
     amocrm: [],
-    calltracking: [],
-    analytics: [],
-    utm: []
+    reserves: [],
+    guests: [],
+    siteforms: [],
+    calltracking: []
   };
   
   try {
@@ -1228,13 +1191,21 @@ function loadMainDataSources_() {
     logInfo_('DATA_LOAD', 'Загрузка данных AmoCRM');
     sources.amocrm = loadAmoCrmData_();
     
+    // Данные резервов 
+    logInfo_('DATA_LOAD', 'Загрузка данных Reserves RP');
+    sources.reserves = loadReservesData_();
+    
+    // Данные гостей
+    logInfo_('DATA_LOAD', 'Загрузка данных Guests RP');
+    sources.guests = loadGuestsData_();
+    
+    // Заявки с сайта
+    logInfo_('DATA_LOAD', 'Загрузка заявок с сайта');
+    sources.siteforms = loadSiteFormsData_();
+    
     // Коллтрекинг данные
     logInfo_('DATA_LOAD', 'Загрузка данных коллтрекинга');
     sources.calltracking = loadCalltrackingData_();
-    
-    // Analytics данные
-    logInfo_('DATA_LOAD', 'Загрузка аналитических данных');
-    sources.analytics = loadAnalyticsData_();
     
     // UTM данные
     logInfo_('DATA_LOAD', 'Загрузка UTM данных');
@@ -1268,15 +1239,45 @@ function buildPhoneMaps_(workingData, mainData) {
     
     // Нормализация телефонов из коллтрекинга
     mainData.calltracking.forEach(call => {
-      if (call.phone) {
-        const normalizedPhone = normalizePhone_(call.phone);
+      if (call.mango_line) {
+        const normalizedPhone = normalizePhone_(call.mango_line);
         if (normalizedPhone) {
           workingData.calltrackingData.set(normalizedPhone, call);
         }
       }
     });
     
-    logInfo_('PHONE_MAP', `Создано ${workingData.phoneMap.size} телефонных сопоставлений`);
+    // Нормализация телефонов из заявок с сайта
+    mainData.siteforms.forEach(form => {
+      if (form.phone) {
+        const normalizedPhone = normalizePhone_(form.phone);
+        if (normalizedPhone) {
+          workingData.siteData.set(normalizedPhone, form);
+        }
+      }
+    });
+    
+    // Нормализация телефонов из резервов
+    mainData.reserves.forEach(reserve => {
+      if (reserve.phone) {
+        const normalizedPhone = normalizePhone_(reserve.phone);
+        if (normalizedPhone) {
+          workingData.reserveData.set(normalizedPhone, reserve);
+        }
+      }
+    });
+    
+    // Нормализация телефонов из гостей
+    mainData.guests.forEach(guest => {
+      if (guest.phone) {
+        const normalizedPhone = normalizePhone_(guest.phone);
+        if (normalizedPhone) {
+          workingData.guestData.set(normalizedPhone, guest);
+        }
+      }
+    });
+    
+    logInfo_('PHONE_MAP', `Создано карт: AMO=${workingData.phoneMap.size}, Коллтрекинг=${workingData.calltrackingData.size}, Сайт=${workingData.siteData.size}, Резервы=${workingData.reserveData.size}, Гости=${workingData.guestData.size}`);
     
   } catch (error) {
     logError_('PHONE_MAP', 'Ошибка построения карт телефонов', error);
@@ -1685,11 +1686,9 @@ function loadAmoCrmData_() {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     
-    // Пробуем найти лист с данными AmoCRM
-    let sheet = ss.getSheetByName('Амо Выгрузка') || 
-               ss.getSheetByName('Выгрузка Амо Полная') || 
-               ss.getSheetByName('AmoCRM') ||
-               ss.getSheetByName('Данные AmoCRM');
+    // Пробуем найти лист с данными AmoCRM (приоритет "Выгрузка Амо Полная")
+    let sheet = ss.getSheetByName('Выгрузка Амо Полная') || 
+               ss.getSheetByName('Амо Выгрузка');
     
     if (!sheet) {
       logWarning_('AMOCRM_LOAD', 'Лист с данными AmoCRM не найден');
@@ -1702,67 +1701,77 @@ function loadAmoCrmData_() {
       return [];
     }
     
-    const headers = data[0];
-    const rows = data.slice(1);
+    const rows = data.slice(1); // Пропускаем заголовки
     
-    // Преобразуем в объекты
-    const amoCrmData = rows.map(row => {
-      const deal = {};
-      headers.forEach((header, index) => {
-        const value = row[index];
-        
-        // Нормализуем ключи
-        switch(header) {
-          case 'ID':
-            deal.id = value;
-            break;
-          case 'Название':
-            deal.name = value;
-            break;
-          case 'Статус':
-            deal.status = value;
-            break;
-          case 'Бюджет':
-            deal.price = parseFloat(value) || 0;
-            break;
-          case 'Дата создания':
-            deal.created_at = value instanceof Date ? value : new Date(value);
-            break;
-          case 'Контакт.Телефон':
-            deal.phone = value;
-            break;
-          case 'Контакт.ФИО':
-            deal.contact_name = value;
-            break;
-          case 'UTM_SOURCE':
-            deal.utm_source = value;
-            break;
-          case 'UTM_MEDIUM':
-            deal.utm_medium = value;
-            break;
-          case 'UTM_CAMPAIGN':
-            deal.utm_campaign = value;
-            break;
-          case 'Причина отказа':
-            deal.refusal_reason = value;
-            break;
-          case 'R.Источник сделки':
-            deal.source = value;
-            break;
-          default:
-            // Сохраняем все остальные поля как есть
-            deal[header] = value;
-        }
-      });
+    // Преобразуем строки в объекты согласно структуре "Выгрузка Амо Полная"
+    const amoCrmData = rows.map(row => ({
+      // Основная информация
+      id: row[0],                           // A — Сделка.ID
+      name: row[1],                         // B — Сделка.Название
+      responsible: row[2],                  // C — Сделка.Ответственный
+      contact_name: row[3],                 // D — Контакт.ФИО
+      status: row[4],                       // E — Сделка.Статус
+      budget: row[5],                       // F — Сделка.Бюджет
+      created_at: row[6],                   // G — Сделка.Дата создания
+      responsible2: row[7],                 // H — Сделка.Ответственный (дубль)
+      tags: row[8],                         // I — Сделка.Теги
+      closed_at: row[9],                    // J — Сделка.Дата закрытия
       
-      return deal;
-    });
+      // Аналитика
+      ym_client_id: row[10],                // K — Сделка.YM_CLIENT_ID
+      ga_client_id: row[11],                // L — Сделка.GA_CLIENT_ID
+      button_text: row[12],                 // M — Сделка.BUTTON_TEXT
+      date: row[13],                        // N — Сделка.DATE
+      time: row[14],                        // O — Сделка.TIME
+      deal_source: row[15],                 // P — Сделка.R.Источник сделки
+      city_tag: row[16],                    // Q — Сделка.R.Тег города
+      software: row[17],                    // R — Сделка.ПО
+      
+      // Бронирование
+      bar_name: row[18],                    // S — Сделка.Бар (deal)
+      booking_date: row[19],                // T — Сделка.Дата брони
+      guest_count: row[20],                 // U — Сделка.Кол-во гостей
+      visit_time: row[21],                  // V — Сделка.Время прихода
+      comment: row[22],                     // W — Сделка.Комментарий МОБ
+      source: row[23],                      // X — Сделка.Источник
+      lead_type: row[24],                   // Y — Сделка.Тип лида
+      refusal_reason: row[25],              // Z — Сделка.Причина отказа (ОБ)
+      guest_status: row[26],                // AA — Сделка.R.Статусы гостей
+      referral_type: row[27],               // AB — Сделка.Сарафан гости
+      
+      // UTM данные
+      utm_medium: row[28],                  // AC — Сделка.UTM_MEDIUM
+      formname: row[29],                    // AD — Сделка.FORMNAME
+      referer: row[30],                     // AE — Сделка.REFERER
+      formid: row[31],                      // AF — Сделка.FORMID
+      mango_line1: row[32],                 // AG — Сделка.Номер линии MANGO OFFICE
+      utm_source: row[33],                  // AH — Сделка.UTM_SOURCE
+      utm_term: row[34],                    // AI — Сделка.UTM_TERM
+      utm_campaign: row[35],                // AJ — Сделка.UTM_CAMPAIGN
+      utm_content: row[36],                 // AK — Сделка.UTM_CONTENT
+      utm_referrer: row[37],                // AL — Сделка.utm_referrer
+      _ym_uid: row[38],                     // AM — Сделка._ym_uid
+      
+      // Контакты
+      phone: row[39],                       // AN — Контакт.Телефон
+      mango_line2: row[40],                 // AO — Контакт.Номер линии MANGO OFFICE
+      notes: row[41]                        // AP — Сделка.Примечания(через ;)
+    }));
     
     logInfo_('AMOCRM_LOAD', `Загружено ${amoCrmData.length} сделок AmoCRM`);
     return amoCrmData;
     
   } catch (error) {
     logError_('AMOCRM_LOAD', 'Ошибка загрузки данных AmoCRM', error);
+    return [];
+  }
+}
+
+/**
+ * Загружает данные из листа "Reserves RP" 
+ */
+function loadReservesData_() {
+  logInfo_('RESERVES_LOAD', 'Загрузка данных из Reserves RP');
     return [];
   }
 }
@@ -1831,39 +1840,216 @@ function loadCalltrackingData_() {
 /**
  * Загрузка аналитических данных из веб-форм и резервов
  */
-function loadAnalyticsData_() {
-  logInfo_('ANALYTICS_LOAD', 'Загрузка аналитических данных');
+/**
+ * Загружает данные из листа "Reserves RP" 
+ */
+function loadReservesData_() {
+  logInfo_('RESERVES_LOAD', 'Загрузка данных из Reserves RP');
   
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const analyticsData = {
-      webForms: [],
-      reserves: [],
-      guests: []
-    };
+    const sheet = ss.getSheetByName('Reserves RP');
     
-    // Заявки с сайта
-    let webFormsSheet = ss.getSheetByName('Заявки с Сайта') || 
-                       ss.getSheetByName('Web Forms') ||
-                       ss.getSheetByName('Формы');
-    
-    if (webFormsSheet) {
-      const webData = webFormsSheet.getDataRange().getValues();
-      if (webData.length > 1) {
-        const webHeaders = webData[0];
-        const webRows = webData.slice(1);
-        
-        analyticsData.webForms = webRows.map(row => {
-          const form = {};
-          webHeaders.forEach((header, index) => {
-            form[header] = row[index];
-          });
-          return form;
-        });
-      }
+    if (!sheet) {
+      logWarning_('RESERVES_LOAD', 'Лист "Reserves RP" не найден');
+      return [];
     }
     
-    // Reserves RP
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) return [];
+    
+    const rows = data.slice(1);
+    
+    const reservesData = rows.map(row => ({
+      id: row[0],              // A — ID
+      request_num: row[1],     // B — № заявки
+      name: row[2],            // C — Имя
+      phone: row[3],           // D — Телефон
+      email: row[4],           // E — Email
+      datetime: row[5],        // F — Дата/время
+      status: row[6],          // G — Статус
+      comment: row[7],         // H — Комментарий
+      amount: row[8],          // I — Счёт, ₽
+      guests: row[9],          // J — Гостей
+      source: row[10]          // K — Источник
+    }));
+    
+    logInfo_('RESERVES_LOAD', `Загружено ${reservesData.length} записей Reserves`);
+    return reservesData;
+    
+  } catch (error) {
+    logError_('RESERVES_LOAD', 'Ошибка загрузки Reserves', error);
+    return [];
+  }
+}
+
+/**
+ * Загружает данные из листа "Guests RP"
+ */
+function loadGuestsData_() {
+  logInfo_('GUESTS_LOAD', 'Загрузка данных из Guests RP');
+  
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('Guests RP');
+    
+    if (!sheet) {
+      logWarning_('GUESTS_LOAD', 'Лист "Guests RP" не найден');
+      return [];
+    }
+    
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) return [];
+    
+    const rows = data.slice(1);
+    
+    const guestsData = rows.map(row => ({
+      name: row[0],            // A — Имя
+      phone: row[1],           // B — Телефон
+      email: row[2],           // C — Email
+      visits: row[3],          // D — Кол-во визитов
+      total_amount: row[4],    // E — Общая сумма
+      first_visit: row[5],     // F — Первый визит
+      last_visit: row[6],      // G — Последний визит
+      bill_1: row[7],          // H — Счёт 1-го визита
+      bill_2: row[8],          // I — Счёт 2-го визита
+      bill_3: row[9],          // J — Счёт 3-го визита
+      bill_4: row[10],         // K — Счёт 4-го визита
+      bill_5: row[11],         // L — Счёт 5-го визита
+      bill_6: row[12],         // M — Счёт 6-го визита
+      bill_7: row[13],         // N — Счёт 7-го визита
+      bill_8: row[14],         // O — Счёт 8-го визита
+      bill_9: row[15],         // P — Счёт 9-го визита
+      bill_10: row[16]         // Q — Счёт 10-го визита
+    }));
+    
+    logInfo_('GUESTS_LOAD', `Загружено ${guestsData.length} записей Guests`);
+    return guestsData;
+    
+  } catch (error) {
+    logError_('GUESTS_LOAD', 'Ошибка загрузки Guests', error);
+    return [];
+  }
+}
+/**
+ * Загружает данные из листа "Заявки с Сайта"
+ */
+function loadSiteFormsData_() {
+  logInfo_('SITE_LOAD', 'Загрузка заявок с сайта');
+  
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('Заявки с Сайта');
+    
+    if (!sheet) {
+      logWarning_('SITE_LOAD', 'Лист "Заявки с Сайта" не найден');
+      return [];
+    }
+    
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) return [];
+    
+    const rows = data.slice(1);
+    
+    const siteData = rows.map(row => ({
+      name: row[0],                 // A — Name
+      phone: row[1],                // B — Phone
+      referer: row[2],              // C — referer
+      formid: row[3],               // D — formid
+      sent: row[4],                 // E — sent
+      requestid: row[5],            // F — requestid
+      email: row[6],                // G — Email
+      date: row[7],                 // H — Date
+      quantity: row[8],             // I — Quantity
+      checkbox: row[9],             // J — Checkbox
+      formname: row[10],            // K — Form name
+      time: row[11],                // L — Time
+      utm_term: row[12],            // M — utm_term
+      utm_campaign: row[13],        // N — utm_campaign
+      utm_source: row[14],          // O — utm_source
+      utm_content: row[15],         // P — utm_content
+      utm_medium: row[16],          // Q — utm_medium
+      button: row[17],              // R — Кнопка
+      ym_client_id: row[18],        // S — ym_client_id
+      ga_client_id: row[19],        // T — ga_client_id
+      button_text: row[20],         // U — button_text
+      referrer: row[21],            // V — referrer
+      landing_page: row[22],        // W — landing_page
+      page_title: row[23],          // X — page_title
+      timestamp: row[24],           // Y — timestamp
+      device_type: row[25],         // Z — device_type
+      device_model: row[26],        // AA — device_model
+      os: row[27],                  // AB — os
+      browser: row[28],             // AC — browser
+      browser_version: row[29],     // AD — browser_version
+      screen_size: row[30],         // AE — screen_size
+      clicks_count: row[31],        // AF — clicks_count
+      user_city: row[32],           // AG — user_city
+      user_country: row[33],        // AH — user_country
+      user_ip: row[34],             // AI — user_ip
+      os_version: row[35],          // AJ — os_version
+      first_source: row[36],        // AK — first_source
+      first_referrer: row[37],      // AL — first_referrer
+      current_source: row[38],      // AM — current_source
+      current_page: row[39],        // AN — current_page
+      visits_count: row[40],        // AO — visits_count
+      first_visit_date: row[41],    // AP — first_visit_date
+      days_since_first_visit: row[42], // AQ — days_since_first_visit
+      submit_date: row[43],         // AR — submit_date
+      submit_time: row[44],         // AS — submit_time
+      day_of_week: row[45],         // AT — day_of_week
+      time_of_day: row[46],         // AU — time_of_day
+      timezone: row[47],            // AV — timezone
+      scroll_depth: row[48]         // AW — scroll_depth
+    }));
+    
+    logInfo_('SITE_LOAD', `Загружено ${siteData.length} заявок с сайта`);
+    return siteData;
+    
+  } catch (error) {
+    logError_('SITE_LOAD', 'Ошибка загрузки заявок с сайта', error);
+    return [];
+  }
+}
+
+/**
+ * Загружает данные коллтрекинга
+ */
+function loadCalltrackingData_() {
+  logInfo_('CALLTRACK_LOAD', 'Загрузка данных коллтрекинга');
+  
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('КоллТрекинг');
+    
+    if (!sheet) {
+      logWarning_('CALLTRACK_LOAD', 'Лист "КоллТрекинг" не найден');
+      return [];
+    }
+    
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) return [];
+    
+    const rows = data.slice(1);
+    
+    const callData = rows.map(row => ({
+      mango_line: row[0],           // A — Контакт.Номер линии MANGO OFFICE
+      tel_source: row[1],           // B — R.Источник ТЕЛ сделки
+      channel_name: row[2]          // C — Название Канала
+    }));
+    
+    logInfo_('CALLTRACK_LOAD', `Загружено ${callData.length} записей коллтрекинга`);
+    return callData;
+    
+  } catch (error) {
+    logError_('CALLTRACK_LOAD', 'Ошибка загрузки коллтрекинга', error);
+    return [];
+  }
+}
+
+/**
+ * Загружает UTM данные (заглушка)
+ */
     let reservesSheet = ss.getSheetByName('Reserves RP') || 
                        ss.getSheetByName('Reserves') ||
                        ss.getSheetByName('Резервы');
@@ -1999,6 +2185,49 @@ function loadUTMData_() {
 // ========================================
 
 /**
+ * Форматирует дату в строку DD.MM.YYYY
+ */
+function formatDate_(date) {
+  if (!date) return '';
+  
+  try {
+    const d = date instanceof Date ? date : new Date(date);
+    if (isNaN(d.getTime())) return '';
+    
+    const day = d.getDate().toString().padStart(2, '0');
+    const month = (d.getMonth() + 1).toString().padStart(2, '0');
+    const year = d.getFullYear();
+    
+    return `${day}.${month}.${year}`;
+  } catch (error) {
+    console.log('Ошибка форматирования даты:', error);
+    return '';
+  }
+}
+
+/**
+ * Безопасное слияние ячеек
+ */
+function safeMergeRange_(sheet, startRow, startCol, numRows, numCols) {
+  try {
+    if (numRows > 1 || numCols > 1) {
+      const range = sheet.getRange(startRow, startCol, numRows, numCols);
+      range.merge();
+    }
+  } catch (error) {
+    // Игнорируем ошибки слияния - это не критично
+    console.log(`Предупреждение: не удалось объединить ячейки ${startRow}:${startCol}`);
+  }
+}
+
+/**
+ * Получает имя листа из конфигурации
+ */
+function getSheetName_(key) {
+  return CONFIG.SHEETS && CONFIG.SHEETS[key] ? CONFIG.SHEETS[key] : key;
+}
+
+/**
  * Получает лист по имени или создает новый
  */
 function getSheet_(sheetName) {
@@ -2007,6 +2236,17 @@ function getSheet_(sheetName) {
   
   if (!sheet) {
     sheet = ss.insertSheet(sheetName);
+    
+    // Применяем стандартное форматирование  
+    const range = sheet.getRange(1, 1, 100, 50);
+    range.setFontFamily(CONFIG.FONT || 'PT Sans');
+    range.setFontSize(10);
+    
+    // Заголовок первой строки
+    const headerRange = sheet.getRange(1, 1, 1, 50);
+    headerRange.setFontWeight('bold');
+    headerRange.setBackground('#e8f0fe');
+    
     logInfo_('SHEET_CREATE', `Создан новый лист: ${sheetName}`);
   }
   
@@ -2081,4 +2321,567 @@ function syncAllData() {
     logError_('SYNC_ALL', 'Ошибка синхронизации данных', error);
     throw error;
   }
+}
+
+/**
+ * 🎯 ГЛАВНАЯ ФУНКЦИЯ СБОРКИ РАБОЧЕГО АМО
+ * Создает итоговый файл с точным оформлением как на картинках
+ */
+function buildWorkingAmoFile() {
+  console.log('🎯 Начинаем сборку файла РАБОЧИЙ АМО');
+  
+  try {
+    const workingSheet = getSheet_(getSheetName_('WORKING_AMO'));
+    workingSheet.clear();
+    
+    // 1. Создаем заголовки с точным оформлением как на картинках
+    createWorkingAmoHeaders_(workingSheet);
+    
+    // 2. Загружаем и объединяем все данные
+    const consolidatedData = consolidateAllDataSources_();
+    
+    // 3. Записываем данные в файл
+    writeConsolidatedData_(workingSheet, consolidatedData);
+    
+    // 4. Применяем форматирование как на картинках
+    applyWorkingAmoFormatting_(workingSheet, consolidatedData.length);
+    
+    console.log(`✅ Файл РАБОЧИЙ АМО собран: ${consolidatedData.length} записей`);
+    
+  } catch (error) {
+    console.error('❌ Ошибка сборки РАБОЧИЙ АМО:', error);
+    throw error;
+  }
+}
+
+/**
+ * Создает заголовки точно как на картинках
+ */
+function createWorkingAmoHeaders_(sheet) {
+  const headers = [
+    // � ИНФОРМАЦИЯ О СДЕЛКЕ (A–H)
+    'ID',                    // A
+    'Название',              // B
+    'Ответственный',         // C
+    'Статус',               // D
+    'Бюджет',               // E
+    'Дата создания',        // F
+    'Теги',                 // G
+    'Дата закрытия',        // H
+    
+    // 👤 КОНТАКТ (I–M)
+    'ФИО',                  // I
+    'Телефон',              // J
+    'Номер линии MANGO OFFICE',    // K
+    'Номер линии MANGO OFFICE',    // L (дубль для второй линии)
+    'Бар (deal)',           // M
+    
+    // 🕒 БРОНЬ (N–R)
+    'Дата брони',           // N
+    'Время прихода',        // O
+    'Кол-во гостей',        // P
+    'Комментарий МОБ',      // Q
+    'R.Статусы гостей',     // R
+    
+    // � UTM/ИСТОЧНИК + 🔍 АНАЛИТИКА (S–AJ)
+    'Источник',             // S
+    'Тип лида',             // T
+    'R.Источник сделки',    // U
+    'R.Источник ТЕЛ сделки', // V
+    'UTM_SOURCE',           // W
+    'UTM_MEDIUM',           // X
+    'UTM_CAMPAIGN',         // Y
+    'UTM_TERM',             // Z
+    'UTM_CONTENT',          // AA
+    'utm_referrer',         // AB
+    'YM_CLIENT_ID',         // AC
+    'GA_CLIENT_ID',         // AD
+    'FORMNAME',             // AE
+    'REFERER',              // AF
+    'FORMID',               // AG
+    'DATE',                 // AH
+    'TIME',                 // AI
+    'BUTTON_TEXT',          // AJ
+    
+    // 📌 ДОПОЛНИТЕЛЬНО (AK–AO)
+    'R.Тег города',         // AK
+    'ПО',                   // AL
+    'Причина отказа (ОБ)',  // AM
+    'Примечание 1',         // AN
+    'Последняя заявка',     // AO
+    
+    // 🟦 SITE/RESERVES/GUESTS (обогащение) (AP–BA)
+    'utm_source (из сайта/резервов)', // AP
+    'utm_medium',           // AQ
+    'utm_campaign',         // AR
+    '(резерв, сейчас пусто)', // AS
+    'R.Источник ТЕЛ сделки (из коллтрекинга)', // AT
+    'Визитов (из SITE)',    // AU
+    'Сумма ₽ (из SITE)',    // AV
+    'Последний визит (из SITE)', // AW
+    'Визитов (из GUESTS RP)', // AX
+    'Сумма ₽ (из GUESTS RP)', // AY
+    'Первый визит (из GUESTS RP)', // AZ
+    'Последний визит (из GUESTS RP)', // BA
+    
+    // 🧮 АВТО‑ПОЛЯ (BB–BD)
+    'Возраст сделки (дн.)', // BB
+    'Дней до брони',        // BC
+    'Сарафан гости',        // BD
+    
+    // (прочее) BE
+    '_ym_uid'               // BE
+  ];
+  
+  // Записываем заголовки
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  
+  // Применяем цветное оформление секций
+  applySectionFormatting_(sheet, headers.length);
+}
+
+/**
+ * Применяет цветное оформление секций как на картинках
+ */
+function applySectionFormatting_(sheet, totalCols) {
+  // � ИНФОРМАЦИЯ О СДЕЛКЕ - розовый (A-H, колонки 1-8)
+  sheet.getRange(1, 1, 1, 8)
+    .setBackground('#f4cccc')
+    .setFontWeight('bold')
+    .setHorizontalAlignment('center');
+  
+  // 👤 КОНТАКТ - голубой (I-M, колонки 9-13)
+  sheet.getRange(1, 9, 1, 5)
+    .setBackground('#cfe2f3')
+    .setFontWeight('bold')
+    .setHorizontalAlignment('center');
+    
+  // 🕒 БРОНЬ - фиолетовый (N-R, колонки 14-18)
+  sheet.getRange(1, 14, 1, 5)
+    .setBackground('#d5a6bd')
+    .setFontWeight('bold')
+    .setHorizontalAlignment('center');
+    
+  // � UTM/ИСТОЧНИК + 🔍 АНАЛИТИКА - желтый (S-AJ, колонки 19-36) 
+  sheet.getRange(1, 19, 1, 18)
+    .setBackground('#fff2cc')
+    .setFontWeight('bold')
+    .setHorizontalAlignment('center');
+    
+  // � ДОПОЛНИТЕЛЬНО - светло-зеленый (AK-AO, колонки 37-41)
+  sheet.getRange(1, 37, 1, 5)
+    .setBackground('#d9ead3')
+    .setFontWeight('bold')
+    .setHorizontalAlignment('center');
+    
+  // 🟦 SITE/RESERVES/GUESTS - голубой (AP-BA, колонки 42-53)
+  sheet.getRange(1, 42, 1, 12)
+    .setBackground('#cfe2f3')
+    .setFontWeight('bold')
+    .setHorizontalAlignment('center');
+    
+  // 🧮 АВТО‑ПОЛЯ - серый (BB-BE, колонки 54-57)
+  sheet.getRange(1, 54, 1, 4)
+    .setBackground('#efefef')
+    .setFontWeight('bold')
+    .setHorizontalAlignment('center');
+}
+
+/**
+ * Объединяет данные из всех источников
+ */
+function consolidateAllDataSources_() {
+  console.log('📊 Объединение данных из всех источников...');
+  
+  try {
+    // Создаем структуру рабочих данных
+    const workingData = {
+      phoneMap: new Map(),
+      calltrackingData: new Map(),
+      utmData: new Map(),
+      siteData: new Map(),
+      reserveData: new Map(),
+      guestData: new Map(),
+      errors: []
+    };
+    
+    // Загружаем основные данные
+    const mainData = loadMainDataSources_();
+    
+    // Строим карты телефонов для сопоставления
+    buildPhoneMaps_(workingData, mainData);
+    
+    console.log(`Данные загружены: AMO=${mainData.amocrm.length}, WebForms=${mainData.webForms?.length || 0}`);
+    
+    const consolidatedData = [];
+    
+    // Обрабатываем каждую сделку AMO
+    for (let i = 0; i < mainData.amocrm.length; i++) {
+      const deal = mainData.amocrm[i];
+      const phone = normalizePhone_(deal.phone);
+      
+      // Обогащаем данными из других источников
+      const enrichedData = enrichDealWithAllSources_(deal, phone, workingData);
+      consolidatedData.push(enrichedData);
+    }
+    
+    console.log(`✅ Объединено ${consolidatedData.length} записей`);
+    return consolidatedData;
+    
+  } catch (error) {
+    logError_('CONSOLIDATE', 'Ошибка объединения данных', error);
+    throw error;
+  }
+}
+
+/**
+ * Обогащает сделку данными из всех источников для РАБОЧИЙ АМО
+ * Создает единую структуру данных на основе всех 6 источников  
+ */
+function enrichDealWithAllSources_(deal, phone, workingData) {
+  // Получаем обогащающие данные из всех источников по телефону
+  const calltrackingData = workingData.calltrackingData.get(phone) || {};
+  const siteData = workingData.siteData.get(phone) || {};
+  const reserveData = workingData.reserveData.get(phone) || {};
+  const guestData = workingData.guestData.get(phone) || {};
+  
+  return [
+    // � ИНФОРМАЦИЯ О СДЕЛКЕ (A–H)
+    deal.id || '',                              // A — ID
+    deal.name || '',                            // B — Название
+    deal.responsible || '',                     // C — Ответственный
+    deal.status || '',                          // D — Статус
+    deal.budget || deal.price || 0,             // E — Бюджет
+    formatDate_(deal.created_at) || '',         // F — Дата создания
+    deal.tags || '',                            // G — Теги
+    formatDate_(deal.closed_at) || '',          // H — Дата закрытия
+    
+    // 👤 КОНТАКТ (I–M)
+    deal.contact_name || deal.client_name || '', // I — ФИО
+    deal.phone || '',                           // J — Телефон
+    deal.mango_line1 || '',                     // K — Номер линии MANGO OFFICE
+    deal.mango_line2 || '',                     // L — Номер линии MANGO OFFICE (дубль)
+    deal.bar_name || deal.name || '',           // M — Бар (deal)
+    
+    // 🕒 БРОНЬ (N–R)
+    formatDate_(deal.booking_date) || formatDate_(deal.created_at) || '', // N — Дата брони
+    deal.visit_time || '',                      // O — Время прихода
+    deal.guest_count || '',                     // P — Кол-во гостей
+    deal.comment || '',                         // Q — Комментарий МОБ
+    deal.guest_status || deal.status || '',     // R — R.Статусы гостей
+    
+    // � UTM/ИСТОЧНИК + 🔍 АНАЛИТИКА (S–AJ)
+    utmData.utm_source || deal.source || '',    // S — Источник
+    deal.lead_type || '',                       // T — Тип лида
+    deal.deal_source || '',                     // U — R.Источник сделки
+    deal.tel_source || calltrackingData.source || '', // V — R.Источник ТЕЛ сделки
+    utmData.utm_source || '',                   // W — UTM_SOURCE
+    utmData.utm_medium || '',                   // X — UTM_MEDIUM
+    utmData.utm_campaign || '',                 // Y — UTM_CAMPAIGN
+    utmData.utm_term || '',                     // Z — UTM_TERM
+    utmData.utm_content || '',                  // AA — UTM_CONTENT
+    utmData.utm_referrer || utmData.referer || '', // AB — utm_referrer
+    utmData.ym_client_id || '',                 // AC — YM_CLIENT_ID
+    utmData.ga_client_id || '',                 // AD — GA_CLIENT_ID
+    utmData.formname || '',                     // AE — FORMNAME
+    utmData.referer || '',                      // AF — REFERER
+    utmData.formid || '',                       // AG — FORMID
+    utmData.date || '',                         // AH — DATE
+    utmData.time || '',                         // AI — TIME
+    utmData.button_text || '',                  // AJ — BUTTON_TEXT
+    
+    // 📌 ДОПОЛНИТЕЛЬНО (AK–AO)
+    deal.city_tag || '',                        // AK — R.Тег города
+    deal.software || '',                        // AL — ПО
+    deal.refusal_reason || '',                  // AM — Причина отказа (ОБ)
+    siteData.note || '',                        // AN — Примечание 1
+    siteData.last_request || '',                // AO — Последняя заявка
+    
+    // 🟦 SITE/RESERVES/GUESTS (обогащение) (AP–BA)
+    siteData.utm_source || '',                  // AP — utm_source (из сайта/резервов)
+    siteData.utm_medium || '',                  // AQ — utm_medium
+    siteData.utm_campaign || '',                // AR — utm_campaign
+    reserveData.note || '',                     // AS — (резерв, сейчас пусто)
+    calltrackingData.tel_source || '',          // AT — R.Источник ТЕЛ сделки (из коллтрекинга)
+    siteData.visits || 0,                       // AU — Визитов (из SITE)
+    siteData.amount || 0,                       // AV — Сумма ₽ (из SITE)
+    siteData.last_visit || '',                  // AW — Последний визит (из SITE)
+    guestData.visits || 0,                      // AX — Визитов (из GUESTS RP)
+    guestData.amount || 0,                      // AY — Сумма ₽ (из GUESTS RP)
+    guestData.first_visit || '',                // AZ — Первый визит (из GUESTS RP)
+    guestData.last_visit || '',                 // BA — Последний визит (из GUESTS RP)
+    
+    // 🧮 АВТО‑ПОЛЯ (BB–BD)
+    calculateDealAge_(deal.created_at),         // BB — Возраст сделки (дн.)
+    calculateDaysToBooking_(deal.created_at, deal.booking_date), // BC — Дней до брони
+    deal.referral_type || '',                   // BD — Сарафан гости
+    
+    // (прочее) BE
+    utmData._ym_uid || ''                       // BE — _ym_uid
+  ];
+}
+  
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    
+    // Получаем данные AmoCRM для анализа
+    const amoCrmData = loadAmoCrmData_();
+    
+    if (amoCrmData.length === 0) {
+      logWarning_('DAILY_STATS', 'Нет данных AmoCRM для статистики');
+      return;
+    }
+    
+    // Создаем или получаем лист статистики
+    let statsSheet = getSheet_(getSheetName_('DAILY_STATISTICS'));
+    
+    // Очищаем предыдущие данные
+    statsSheet.clear();
+    
+    // Заголовки
+    const headers = [
+      'Дата', 
+      'Всего сделок', 
+      'Новых сделок', 
+      'Закрытых сделок', 
+      'Успешных сделок', 
+      'Отказов',
+      'Общая сумма', 
+      'Средний чек',
+      'Конверсия %'
+    ];
+    
+    statsSheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    
+    // Группируем данные по дням
+    const dailyStats = new Map();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    amoCrmData.forEach(deal => {
+      const createdDate = deal.created_at instanceof Date ? deal.created_at : new Date(deal.created_at);
+      const dateKey = createdDate.toDateString();
+      
+      if (!dailyStats.has(dateKey)) {
+        dailyStats.set(dateKey, {
+          date: createdDate,
+          total: 0,
+          new: 0,
+          closed: 0,
+          success: 0,
+          failed: 0,
+          revenue: 0
+        });
+      }
+      
+      const dayStats = dailyStats.get(dateKey);
+      dayStats.total++;
+      
+      // Определяем статус
+      const status = deal.status || '';
+      const normalizedStatus = deal.normalized_status || '';
+      
+      if (normalizedStatus === 'new') {
+        dayStats.new++;
+      } else if (normalizedStatus === 'success') {
+        dayStats.success++;
+        dayStats.closed++;
+        dayStats.revenue += deal.price || 0;
+      } else if (normalizedStatus === 'failed') {
+        dayStats.failed++;
+        dayStats.closed++;
+      }
+    });
+    
+    // Формируем данные для таблицы
+    const statsData = Array.from(dailyStats.values())
+      .sort((a, b) => b.date - a.date) // Сортируем по убыванию даты
+      .slice(0, 30) // Берем последние 30 дней
+      .map(stats => {
+        const avgDeal = stats.success > 0 ? stats.revenue / stats.success : 0;
+        const conversion = stats.total > 0 ? (stats.success / stats.total * 100).toFixed(1) : 0;
+        
+        return [
+          stats.date,
+          stats.total,
+          stats.new,
+          stats.closed,
+          stats.success,
+          stats.failed,
+          stats.revenue,
+          Math.round(avgDeal),
+          conversion + '%'
+        ];
+      });
+    
+    // Записываем данные
+    if (statsData.length > 0) {
+      statsSheet.getRange(2, 1, statsData.length, headers.length).setValues(statsData);
+      
+      // Форматирование
+      statsSheet.getRange(1, 1, 1, headers.length)
+        .setBackground('#4285f4')
+        .setFontColor('white')
+        .setFontWeight('bold');
+      
+      // Форматируем суммы
+      if (statsData.length > 0) {
+        statsSheet.getRange(2, 7, statsData.length, 2).setNumberFormat('#,##0');
+      }
+      
+      // Автоширина колонок
+      for (let i = 1; i <= headers.length; i++) {
+        statsSheet.autoResizeColumn(i);
+      }
+      
+      // Заморозка заголовка
+      statsSheet.setFrozenRows(1);
+    }
+    
+    logInfo_('DAILY_STATS', `Ежедневная статистика обновлена: ${statsData.length} дней`);
+    
+  } catch (error) {
+    logError_('DAILY_STATS', 'Ошибка обновления ежедневной статистики', error);
+    throw error;
+  }
+}
+
+/**
+ * Заглушки для остальных аналитических функций
+ */
+function syncAmoCrmDataOnly() {
+  logInfo_('SYNC_AMO', 'Синхронизация только AmoCRM данных');
+  // Реализация синхронизации AmoCRM
+}
+
+function syncWebFormsDataOnly() {
+  logInfo_('SYNC_WEB', 'Синхронизация только веб-форм');
+  // Реализация синхронизации веб-форм
+}
+
+function syncCallTrackingDataOnly() {
+  logInfo_('SYNC_CALL', 'Синхронизация только коллтрекинга');
+  // Реализация синхронизации коллтрекинга
+}
+
+function syncYandexMetricaDataOnly() {
+  logInfo_('SYNC_YM', 'Синхронизация только Яндекс.Метрики');
+  // Реализация синхронизации Яндекс.Метрики
+}
+
+/**
+ * Записывает объединенные данные в лист
+ */
+function writeConsolidatedData_(sheet, data) {
+  if (data.length === 0) {
+    console.log('⚠️ Нет данных для записи');
+    return;
+  }
+  
+  console.log(`📝 Записываем ${data.length} строк данных...`);
+  
+  // Записываем данные пакетами для производительности
+  const BATCH_SIZE = 100;
+  let startRow = 2; // Начинаем после заголовков
+  
+  for (let i = 0; i < data.length; i += BATCH_SIZE) {
+    const batch = data.slice(i, Math.min(i + BATCH_SIZE, data.length));
+    const endRow = startRow + batch.length - 1;
+    
+    try {
+      sheet.getRange(startRow, 1, batch.length, batch[0].length).setValues(batch);
+      console.log(`✅ Записан пакет ${i + 1}-${Math.min(i + BATCH_SIZE, data.length)}`);
+      startRow = endRow + 1;
+    } catch (error) {
+      console.error(`❌ Ошибка записи пакета ${i + 1}:`, error);
+    }
+  }
+}
+
+/**
+ * Применяет форматирование к данным как на картинках
+ */
+function applyWorkingAmoFormatting_(sheet, dataRows) {
+  console.log('🎨 Применяем форматирование...');
+  
+  try {
+    // Общий шрифт для всего листа
+    const maxCols = sheet.getLastColumn();
+    const totalRows = dataRows + 1; // +1 для заголовков
+    
+    sheet.getRange(1, 1, totalRows, maxCols)
+      .setFontFamily(CONFIG.FONT || 'PT Sans')
+      .setFontSize(9);
+    
+    // Заморозка первой строки
+    sheet.setFrozenRows(1);
+    
+    // Автоширина для всех колонок
+    for (let col = 1; col <= maxCols; col++) {
+      sheet.autoResizeColumn(col);
+    }
+    
+    // Применяем условное форматирование для статусов
+    applyConditionalFormatting_(sheet, totalRows);
+    
+    console.log('✅ Форматирование применено');
+    
+  } catch (error) {
+    console.error('❌ Ошибка форматирования:', error);
+  }
+}
+
+/**
+ * Применяет условное форматирование для статусов
+ */
+function applyConditionalFormatting_(sheet, totalRows) {
+  // Колонка со статусами (R.Статус гостей - 6я колонка)
+  const statusRange = sheet.getRange(2, 6, totalRows - 1, 1);
+  
+  // Цветовая схема для статусов
+  const statusColors = {
+    'Новый': '#ccffcc',      // светло-зеленый
+    'Подтвержден': '#ffe599', // желтый  
+    'Пришел': '#b6d7a8',     // зеленый
+    'Не пришел': '#f4cccc',  // светло-красный
+    'Отказ': '#ea9999'       // красный
+  };
+  
+  // Применяем цвета (через API условного форматирования сложно, делаем базово)
+  for (let row = 2; row <= totalRows; row++) {
+    const statusCell = sheet.getRange(row, 6);
+    const status = statusCell.getValue();
+    
+    if (statusColors[status]) {
+      statusCell.setBackground(statusColors[status]);
+    }
+  }
+}
+
+/**
+ * Вычисляет возраст сделки в днях
+ */
+function calculateDealAge_(createdDate) {
+  if (!createdDate) return 0;
+  
+  const created = new Date(createdDate);
+  const now = new Date();
+  const diffTime = Math.abs(now - created);
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  
+  return diffDays;
+}
+
+/**
+ * Вычисляет дни до брони
+ */
+function calculateDaysToBooking_(createdDate, bookingDate) {
+  if (!createdDate || !bookingDate) return 0;
+  
+  const created = new Date(createdDate);
+  const booking = new Date(bookingDate);
+  const diffTime = booking - created;
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  
+  return diffDays > 0 ? diffDays : 0;
 }
