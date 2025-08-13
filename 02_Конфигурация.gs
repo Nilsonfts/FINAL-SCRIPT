@@ -38,6 +38,14 @@ const CONFIG = {
     log_level: 'INFO' // DEBUG, INFO, WARNING, ERROR
   },
   
+  // ===== НАСТРОЙКИ GPT =====
+  GPT: {
+    MODEL: 'gpt-4o',
+    FALLBACK_MODEL: 'gpt-4o-mini',
+    MAX_TOKENS: 2000,
+    TEMPERATURE: 0.3
+  },
+  
   // ===== НАСТРОЙКИ ШРИФТОВ И ФОРМАТИРОВАНИЯ =====
   DEFAULT_FONT: 'PT Sans',
   

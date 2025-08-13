@@ -588,7 +588,7 @@ function addRefusalAnalysisCharts_(sheet, analysisResults) {
     try {
       const categoriesChart = createChart_(sheet, 'pie', categoriesChartData, {
         title: 'Распределение причин отказов по категориям',
-        position: { row: 3, column: 6 },
+        position: { row: 3, col: 6 },
         width: 500,
         height: 350
       });
@@ -612,7 +612,7 @@ function addRefusalAnalysisCharts_(sheet, analysisResults) {
     try {
       const channelsChart = createChart_(sheet, 'column', channelsChartData, {
         title: 'Количество отказов по каналам',
-        position: { row: 3, column: 12 },
+        position: { row: 3, col: 12 },
         width: 500,
         height: 350
       });
@@ -633,7 +633,7 @@ function addRefusalAnalysisCharts_(sheet, analysisResults) {
     try {
       const trendsChart = createChart_(sheet, 'line', trendsChartData, {
         title: 'Динамика отказов по месяцам',
-        position: { row: 25, column: 6 },
+        position: { row: 25, col: 6 },
         width: 600,
         height: 350
       });
