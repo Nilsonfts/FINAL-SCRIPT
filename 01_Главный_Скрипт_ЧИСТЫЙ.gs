@@ -1534,67 +1534,49 @@ function createEnrichedDataRowClean_(deal, siteData, reserveData, guestData, cal
     return String(name).replace(/^ВСЕ БАРЫ СЕТИ\s*\/\s*/, '');
   };
   
+  // ПРАВИЛЬНАЯ СТРУКТУРА - 41 колонка (A-AO) согласно WORKING_AMO_COLUMNS_CORRECT
   return [
-    // ОСНОВНЫЕ ДАННЫЕ ИЗ AMO (A-AP как в "Выгрузка Амо Полная")
-    deal.id || '',                              // A
-    cleanName(deal.name) || '',                 // B - название очищается от префикса
-    deal.responsible || '',                     // C
-    deal.contact_name || '',                    // D
-    deal.status || '',                          // E
-    deal.budget || 0,                           // F
-    formatDateClean_(deal.created_at) || '',         // G
-    deal.responsible2 || deal.responsible || '', // H
-    deal.tags || '',                            // I
-    formatDateClean_(deal.closed_at) || '',          // J
-    deal.ym_client_id || siteData.ym_client_id || '', // K
-    deal.ga_client_id || siteData.ga_client_id || '', // L
-    deal.button_text || siteData.button_text || '',   // M
-    deal.date || siteData.date || '',                 // N
-    deal.time || siteData.time || '',                 // O
-    deal.deal_source || '',                           // P
-    deal.city_tag || siteData.user_city || '',        // Q
-    deal.software || '',                              // R
-    deal.bar_name || '',                              // S
-    formatDateClean_(deal.booking_date) || '',             // T
-    deal.guest_count || reserveData.guests || '',     // U
-    deal.visit_time || '',                            // V
-    deal.comment || reserveData.comment || '',        // W
-    deal.source || siteData.utm_source || '',         // X
-    deal.lead_type || '',                             // Y
-    deal.refusal_reason || '',                        // Z
-    deal.guest_status || reserveData.status || '',    // AA
-    deal.referral_type || '',                         // AB
-    siteData.utm_medium || deal.utm_medium || '',     // AC
-    siteData.formname || deal.formname || '',         // AD
-    siteData.referer || deal.referer || '',           // AE
-    siteData.formid || deal.formid || '',             // AF
-    deal.mango_line1 || '',                           // AG
-    siteData.utm_source || deal.utm_source || '',     // AH
-    siteData.utm_term || deal.utm_term || '',         // AI
-    siteData.utm_campaign || deal.utm_campaign || '', // AJ
-    siteData.utm_content || deal.utm_content || '',   // AK
-    siteData.referrer || deal.utm_referrer || '',     // AL
-    deal._ym_uid || '',                               // AM
-    deal.phone || '',                                 // AN
-    deal.mango_line2 || callData.mango_line || '',    // AO
-    deal.notes || '',                                 // AP
-    
-    // ДОПОЛНИТЕЛЬНЫЕ ПОЛЯ ОБОГАЩЕНИЯ
-    callData.tel_source || '',                        // AQ — Источник из коллтрекинга
-    callData.channel_name || '',                      // AR — Канал коллтрекинга
-    reserveData.amount || 0,                          // AS — Сумма из резервов
-    formatDateClean_(reserveData.datetime) || '',          // AT — Дата резерва
-    guestData.visits || 0,                            // AU — Количество визитов
-    guestData.total_amount || 0,                      // AV — Общая сумма гостя
-    formatDateClean_(guestData.first_visit) || '',         // AW — Первый визит
-    formatDateClean_(guestData.last_visit) || '',          // AX — Последний визит
-    siteData.device_type || '',                       // AY — Тип устройства
-    siteData.landing_page || '',                      // AZ — Посадочная страница
-    
-    // АВТОМАТИЧЕСКИЕ ПОЛЯ
-    calculateDealAgeClean_(deal.created_at),               // BA — Возраст сделки (дн.)
-    calculateDaysToBookingClean_(deal.created_at, deal.booking_date), // BB — Дней до брони
-    siteData.visits_count || 0                        // BC — Визитов на сайт
+    deal.id || '',                                    // A - 0 - Сделка.ID
+    cleanName(deal.name) || '',                       // B - 1 - Сделка.Название  
+    deal.status || '',                                // C - 2 - Сделка.Статус
+    deal.refusal_reason || '',                        // D - 3 - Сделка.Причина отказа (ОБ)
+    deal.lead_type || '',                             // E - 4 - Сделка.Тип лида
+    deal.guest_status || reserveData.status || '',    // F - 5 - Сделка.R.Статусы гостей
+    deal.responsible || '',                           // G - 6 - Сделка.Ответственный
+    deal.tags || '',                                  // H - 7 - Сделка.Теги
+    deal.budget || 0,                                 // I - 8 - Сделка.Бюджет
+    formatDateClean_(deal.created_at) || '',          // J - 9 - Сделка.Дата создания
+    formatDateClean_(deal.closed_at) || '',           // K - 10 - Сделка.Дата закрытия
+    callData.mango_line || '',                        // L - 11 - Контакт.Номер линии MANGO OFFICE
+    deal.mango_line1 || '',                           // M - 12 - Сделка.Номер линии MANGO OFFICE
+    deal.contact_name || '',                          // N - 13 - Контакт.ФИО
+    deal.phone || '',                                 // O - 14 - Контакт.Телефон
+    reserveData.amount || 0,                          // P - 15 - Счет факт
+    deal.date || siteData.date || '',                 // Q - 16 - Сделка.DATE
+    deal.time || siteData.time || '',                 // R - 17 - Сделка.TIME
+    deal.city_tag || siteData.user_city || '',        // S - 18 - Сделка.R.Тег города
+    formatDateClean_(deal.booking_date) || '',        // T - 19 - Сделка.Дата брони
+    deal.software || '',                              // U - 20 - Сделка.ПО
+    deal.referral_type || '',                         // V - 21 - Сделка.Сарафан гости
+    deal.bar_name || '',                              // W - 22 - Сделка.Бар (deal)
+    deal.deal_source || '',                           // X - 23 - Сделка.R.Источник сделки
+    deal.button_text || siteData.button_text || '',   // Y - 24 - Сделка.BUTTON_TEXT
+    deal.ym_client_id || siteData.ym_client_id || '', // Z - 25 - Сделка.YM_CLIENT_ID
+    deal.ga_client_id || siteData.ga_client_id || '', // AA - 26 - Сделка.GA_CLIENT_ID
+    siteData.utm_source || deal.utm_source || '',     // AB - 27 - Сделка.UTM_SOURCE
+    siteData.utm_medium || deal.utm_medium || '',     // AC - 28 - Сделка.UTM_MEDIUM
+    siteData.utm_term || deal.utm_term || '',         // AD - 29 - Сделка.UTM_TERM
+    siteData.utm_campaign || deal.utm_campaign || '', // AE - 30 - Сделка.UTM_CAMPAIGN
+    siteData.utm_content || deal.utm_content || '',   // AF - 31 - Сделка.UTM_CONTENT
+    siteData.referrer || deal.utm_referrer || '',     // AG - 32 - Сделка.utm_referrer
+    deal.visit_time || '',                            // AH - 33 - Сделка.Время прихода
+    deal.comment || reserveData.comment || '',        // AI - 34 - Сделка.Комментарий МОБ
+    deal.source || siteData.utm_source || '',         // AJ - 35 - Сделка.Источник
+    siteData.formname || deal.formname || '',         // AK - 36 - Сделка.FORMNAME
+    siteData.referer || deal.referer || '',           // AL - 37 - Сделка.REFERER
+    siteData.formid || deal.formid || '',             // AM - 38 - Сделка.FORMID
+    deal._ym_uid || '',                               // AN - 39 - Сделка._ym_uid
+    deal.notes || ''                                  // AO - 40 - Сделка.Примечания(через ;)
   ];
 }
 
@@ -1608,67 +1590,49 @@ function createEnrichedDataRow_(deal, siteData, reserveData, guestData, callData
     return String(name).replace(/^ВСЕ БАРЫ СЕТИ\s*\/\s*/, '');
   };
   
+  // ПРАВИЛЬНАЯ СТРУКТУРА - 41 колонка (A-AO) согласно WORKING_AMO_COLUMNS_CORRECT
   return [
-    // ОСНОВНЫЕ ДАННЫЕ ИЗ AMO (A-AP как в "Выгрузка Амо Полная")
-    deal.id || '',                              // A
-    cleanName(deal.name) || '',                 // B - название очищается от префикса
-    deal.responsible || '',                     // C
-    deal.contact_name || '',                    // D
-    deal.status || '',                          // E
-    deal.budget || 0,                           // F
-    formatDateClean_(deal.created_at) || '',         // G
-    deal.responsible2 || deal.responsible || '', // H
-    deal.tags || '',                            // I
-    formatDateClean_(deal.closed_at) || '',          // J
-    deal.ym_client_id || siteData.ym_client_id || '', // K
-    deal.ga_client_id || siteData.ga_client_id || '', // L
-    deal.button_text || siteData.button_text || '',   // M
-    deal.date || siteData.date || '',                 // N
-    deal.time || siteData.time || '',                 // O
-    deal.deal_source || '',                           // P
-    deal.city_tag || siteData.user_city || '',        // Q
-    deal.software || '',                              // R
-    deal.bar_name || '',                              // S
-    formatDateClean_(deal.booking_date) || '',             // T
-    deal.guest_count || reserveData.guests || '',     // U
-    deal.visit_time || '',                            // V
-    deal.comment || reserveData.comment || '',        // W
-    deal.source || siteData.utm_source || '',         // X
-    deal.lead_type || '',                             // Y
-    deal.refusal_reason || '',                        // Z
-    deal.guest_status || reserveData.status || '',    // AA
-    deal.referral_type || '',                         // AB
-    siteData.utm_medium || deal.utm_medium || '',     // AC
-    siteData.formname || deal.formname || '',         // AD
-    siteData.referer || deal.referer || '',           // AE
-    siteData.formid || deal.formid || '',             // AF
-    deal.mango_line1 || '',                           // AG
-    siteData.utm_source || deal.utm_source || '',     // AH
-    siteData.utm_term || deal.utm_term || '',         // AI
-    siteData.utm_campaign || deal.utm_campaign || '', // AJ
-    siteData.utm_content || deal.utm_content || '',   // AK
-    siteData.referrer || deal.utm_referrer || '',     // AL
-    deal._ym_uid || '',                               // AM
-    deal.phone || '',                                 // AN
-    deal.mango_line2 || callData.mango_line || '',    // AO
-    deal.notes || '',                                 // AP
-    
-    // ДОПОЛНИТЕЛЬНЫЕ ПОЛЯ ОБОГАЩЕНИЯ
-    callData.tel_source || '',                        // AQ — Источник из коллтрекинга
-    callData.channel_name || '',                      // AR — Канал коллтрекинга
-    reserveData.amount || 0,                          // AS — Сумма из резервов
-    formatDateClean_(reserveData.datetime) || '',          // AT — Дата резерва
-    guestData.visits || 0,                            // AU — Количество визитов
-    guestData.total_amount || 0,                      // AV — Общая сумма гостя
-    formatDateClean_(guestData.first_visit) || '',         // AW — Первый визит
-    formatDateClean_(guestData.last_visit) || '',          // AX — Последний визит
-    siteData.device_type || '',                       // AY — Тип устройства
-    siteData.landing_page || '',                      // AZ — Посадочная страница
-    
-    // АВТОМАТИЧЕСКИЕ ПОЛЯ
-    calculateDealAgeClean_(deal.created_at),               // BA — Возраст сделки (дн.)
-    calculateDaysToBookingClean_(deal.created_at, deal.booking_date), // BB — Дней до брони
-    siteData.visits_count || 0                        // BC — Визитов на сайт
+    deal.id || '',                                    // A - 0 - Сделка.ID
+    cleanName(deal.name) || '',                       // B - 1 - Сделка.Название  
+    deal.status || '',                                // C - 2 - Сделка.Статус
+    deal.refusal_reason || '',                        // D - 3 - Сделка.Причина отказа (ОБ)
+    deal.lead_type || '',                             // E - 4 - Сделка.Тип лида
+    deal.guest_status || reserveData.status || '',    // F - 5 - Сделка.R.Статусы гостей
+    deal.responsible || '',                           // G - 6 - Сделка.Ответственный
+    deal.tags || '',                                  // H - 7 - Сделка.Теги
+    deal.budget || 0,                                 // I - 8 - Сделка.Бюджет
+    formatDateClean_(deal.created_at) || '',          // J - 9 - Сделка.Дата создания
+    formatDateClean_(deal.closed_at) || '',           // K - 10 - Сделка.Дата закрытия
+    callData.mango_line || '',                        // L - 11 - Контакт.Номер линии MANGO OFFICE
+    deal.mango_line1 || '',                           // M - 12 - Сделка.Номер линии MANGO OFFICE
+    deal.contact_name || '',                          // N - 13 - Контакт.ФИО
+    deal.phone || '',                                 // O - 14 - Контакт.Телефон
+    reserveData.amount || 0,                          // P - 15 - Счет факт
+    deal.date || siteData.date || '',                 // Q - 16 - Сделка.DATE
+    deal.time || siteData.time || '',                 // R - 17 - Сделка.TIME
+    deal.city_tag || siteData.user_city || '',        // S - 18 - Сделка.R.Тег города
+    formatDateClean_(deal.booking_date) || '',        // T - 19 - Сделка.Дата брони
+    deal.software || '',                              // U - 20 - Сделка.ПО
+    deal.referral_type || '',                         // V - 21 - Сделка.Сарафан гости
+    deal.bar_name || '',                              // W - 22 - Сделка.Бар (deal)
+    deal.deal_source || '',                           // X - 23 - Сделка.R.Источник сделки
+    deal.button_text || siteData.button_text || '',   // Y - 24 - Сделка.BUTTON_TEXT
+    deal.ym_client_id || siteData.ym_client_id || '', // Z - 25 - Сделка.YM_CLIENT_ID
+    deal.ga_client_id || siteData.ga_client_id || '', // AA - 26 - Сделка.GA_CLIENT_ID
+    siteData.utm_source || deal.utm_source || '',     // AB - 27 - Сделка.UTM_SOURCE
+    siteData.utm_medium || deal.utm_medium || '',     // AC - 28 - Сделка.UTM_MEDIUM
+    siteData.utm_term || deal.utm_term || '',         // AD - 29 - Сделка.UTM_TERM
+    siteData.utm_campaign || deal.utm_campaign || '', // AE - 30 - Сделка.UTM_CAMPAIGN
+    siteData.utm_content || deal.utm_content || '',   // AF - 31 - Сделка.UTM_CONTENT
+    siteData.referrer || deal.utm_referrer || '',     // AG - 32 - Сделка.utm_referrer
+    deal.visit_time || '',                            // AH - 33 - Сделка.Время прихода
+    deal.comment || reserveData.comment || '',        // AI - 34 - Сделка.Комментарий МОБ
+    deal.source || siteData.utm_source || '',         // AJ - 35 - Сделка.Источник
+    siteData.formname || deal.formname || '',         // AK - 36 - Сделка.FORMNAME
+    siteData.referer || deal.referer || '',           // AL - 37 - Сделка.REFERER
+    siteData.formid || deal.formid || '',             // AM - 38 - Сделка.FORMID
+    deal._ym_uid || '',                               // AN - 39 - Сделка._ym_uid
+    deal.notes || ''                                  // AO - 40 - Сделка.Примечания(через ;)
   ];
 }
 
@@ -1676,21 +1640,49 @@ function createEnrichedDataRow_(deal, siteData, reserveData, guestData, callData
  * СОЗДАНИЕ ЗАГОЛОВКОВ ТАБЛИЦЫ
  */
 function createWorkingAmoHeaders_(sheet) {
-  // Заголовки по реальной структуре ваших данных
+  // ПРАВИЛЬНЫЕ ЗАГОЛОВКИ согласно структуре из конфигурации (41 колонка A-AO)
   const headers = [
-    // ОСНОВНЫЕ ДАННЫЕ AMO (A-AP)
-    'ID', 'Название', 'Ответственный', 'Контакт.ФИО', 'Статус', 'Бюджет', 'Дата создания', 'Ответственный2', 'Теги', 'Дата закрытия',
-    'YM_CLIENT_ID', 'GA_CLIENT_ID', 'BUTTON_TEXT', 'DATE', 'TIME', 'R.Источник сделки', 'R.Тег города', 'ПО',
-    'Бар (deal)', 'Дата брони', 'Кол-во гостей', 'Время прихода', 'Комментарий МОБ', 'Источник', 'Тип лида', 'Причина отказа (ОБ)', 'R.Статусы гостей', 'Сарафан гости',
-    'UTM_MEDIUM', 'FORMNAME', 'REFERER', 'FORMID', 'Номер линии MANGO OFFICE', 'UTM_SOURCE', 'UTM_TERM', 'UTM_CAMPAIGN', 'UTM_CONTENT', 'utm_referrer', '_ym_uid',
-    'Контакт.Телефон', 'Контакт.Номер линии MANGO OFFICE', 'Примечания(через ;)',
-    
-    // ОБОГАЩЕНИЕ ДАННЫМИ
-    'R.Источник ТЕЛ (коллтрекинг)', 'Канал (коллтрекинг)', 'Сумма ₽ (резерв)', 'Дата резерва', 'Визитов (гость)', 'Сумма ₽ (гость)', 'Первый визит (гость)', 'Последний визит (гость)',
-    'Тип устройства (сайт)', 'Посадочная страница (сайт)',
-    
-    // АВТОПОЛЯ
-    'Возраст сделки (дн.)', 'Дней до брони', 'Визитов на сайт'
+    'Сделка.ID',                          // A - 0
+    'Сделка.Название',                    // B - 1
+    'Сделка.Статус',                      // C - 2  
+    'Сделка.Причина отказа (ОБ)',        // D - 3
+    'Сделка.Тип лида',                   // E - 4
+    'Сделка.R.Статусы гостей',          // F - 5
+    'Сделка.Ответственный',              // G - 6
+    'Сделка.Теги',                       // H - 7
+    'Сделка.Бюджет',                     // I - 8
+    'Сделка.Дата создания',              // J - 9
+    'Сделка.Дата закрытия',              // K - 10
+    'Контакт.Номер линии MANGO OFFICE',  // L - 11
+    'Сделка.Номер линии MANGO OFFICE',   // M - 12
+    'Контакт.ФИО',                       // N - 13
+    'Контакт.Телефон',                   // O - 14
+    'Счет факт',                         // P - 15
+    'Сделка.DATE',                       // Q - 16
+    'Сделка.TIME',                       // R - 17
+    'Сделка.R.Тег города',              // S - 18
+    'Сделка.Дата брони',                 // T - 19
+    'Сделка.ПО',                         // U - 20
+    'Сделка.Сарафан гости',             // V - 21
+    'Сделка.Бар (deal)',                // W - 22
+    'Сделка.R.Источник сделки',         // X - 23
+    'Сделка.BUTTON_TEXT',               // Y - 24
+    'Сделка.YM_CLIENT_ID',              // Z - 25
+    'Сделка.GA_CLIENT_ID',              // AA - 26
+    'Сделка.UTM_SOURCE',                // AB - 27
+    'Сделка.UTM_MEDIUM',                // AC - 28
+    'Сделка.UTM_TERM',                  // AD - 29
+    'Сделка.UTM_CAMPAIGN',              // AE - 30
+    'Сделка.UTM_CONTENT',               // AF - 31
+    'Сделка.utm_referrer',              // AG - 32
+    'Сделка.Время прихода',             // AH - 33
+    'Сделка.Комментарий МОБ',           // AI - 34
+    'Сделка.Источник',                  // AJ - 35
+    'Сделка.FORMNAME',                  // AK - 36
+    'Сделка.REFERER',                   // AL - 37
+    'Сделка.FORMID',                    // AM - 38
+    'Сделка._ym_uid',                   // AN - 39
+    'Сделка.Примечания(через ;)'       // AO - 40
   ];
   
   // Записываем заголовки
@@ -1703,22 +1695,25 @@ function createWorkingAmoHeaders_(sheet) {
              .setHorizontalAlignment('center')
              .setWrap(true);
   
-  // Цветовое кодирование секций
+  // Цветовое кодирование секций - исправленная версия
   applySectionColoring_(sheet, headers.length);
 }
 
 /**
- * ЦВЕТОВОЕ КОДИРОВАНИЕ СЕКЦИЙ
+ * ЦВЕТОВОЕ КОДИРОВАНИЕ СЕКЦИЙ (ИСПРАВЛЕННАЯ ВЕРСИЯ)
  */
 function applySectionColoring_(sheet, totalCols) {
-  // Основные данные AMO (A-AP, колонки 1-42) - светло-голубой
-  sheet.getRange(1, 1, 1, 42).setBackground('#cfe2f3');
+  // Основная информация о сделках (A-K, колонки 1-11) - светло-голубой
+  sheet.getRange(1, 1, 1, 11).setBackground('#cfe2f3');
   
-  // Обогащение данными (AQ-AZ, колонки 43-51) - светло-зеленый  
-  sheet.getRange(1, 43, 1, 8).setBackground('#d9ead3');
+  // Контактная информация (L-O, колонки 12-15) - светло-зеленый  
+  sheet.getRange(1, 12, 1, 4).setBackground('#d9ead3');
   
-  // Автополя (BA-BC, колонки 52-54) - светло-желтый
-  sheet.getRange(1, 52, 1, 3).setBackground('#fff2cc');
+  // Дополнительные поля сделки (P-W, колонки 16-23) - светло-желтый
+  sheet.getRange(1, 16, 1, 8).setBackground('#fff2cc');
+  
+  // UTM-метки и аналитика (X-AO, колонки 24-41) - светло-розовый
+  sheet.getRange(1, 24, 1, 18).setBackground('#fce5cd');
 }
 
 /**
