@@ -53,8 +53,8 @@ const CONFIG = {
     DEMO_TESTS: '🎯 ДЕМО И ТЕСТЫ'
   },
 
-  // Маппинг колонок рабочего листа АМО (A-AO, 41 колонка) - РЕАЛЬНАЯ СТРУКТУРА
-  WORKING_AMO_COLUMNS: {
+  // Маппинг колонок рабочего листа АМО - ПРАВИЛЬНАЯ ВЕРСИЯ (41 столбец)
+  WORKING_AMO_COLUMNS_CORRECT: {
     ID: 0,                          // A - Сделка.ID
     NAME: 1,                        // B - Сделка.Название  
     STATUS: 2,                      // C - Сделка.Статус
@@ -66,11 +66,11 @@ const CONFIG = {
     BUDGET: 8,                      // I - Сделка.Бюджет
     CREATED_AT: 9,                  // J - Сделка.Дата создания
     CLOSED_AT: 10,                  // K - Сделка.Дата закрытия
-    MANGO_LINE2: 11,                // L - Контакт.Номер линии MANGO OFFICE
-    MANGO_LINE1: 12,                // M - Сделка.Номер линии MANGO OFFICE
+    CONTACT_MANGO: 11,              // L - Контакт.Номер линии MANGO OFFICE
+    DEAL_MANGO: 12,                 // M - Сделка.Номер линии MANGO OFFICE
     CONTACT_NAME: 13,               // N - Контакт.ФИО
     PHONE: 14,                      // O - Контакт.Телефон
-    FACT_AMOUNT: 15,                // P - Счет факт (НОВАЯ КОЛОНКА)
+    FACT_AMOUNT: 15,                // P - Счет факт
     DATE: 16,                       // Q - Сделка.DATE
     TIME: 17,                       // R - Сделка.TIME
     CITY_TAG: 18,                   // S - Сделка.R.Тег города
@@ -86,17 +86,68 @@ const CONFIG = {
     UTM_MEDIUM: 28,                 // AC - Сделка.UTM_MEDIUM
     UTM_TERM: 29,                   // AD - Сделка.UTM_TERM
     UTM_CAMPAIGN: 30,               // AE - Сделка.UTM_CAMPAIGN
-    UTM_CONTENT: 31,                // AF - Сделка.UTM_CONTENT
+    UTM_CONTENT: 31,                // AF - Сделka.UTM_CONTENT
     UTM_REFERRER: 32,               // AG - Сделка.utm_referrer
     VISIT_TIME: 33,                 // AH - Сделка.Время прихода
     COMMENT: 34,                    // AI - Сделка.Комментарий МОБ
     SOURCE: 35,                     // AJ - Сделка.Источник
     FORMNAME: 36,                   // AK - Сделка.FORMNAME
     REFERER: 37,                    // AL - Сделка.REFERER
-    FORMID: 38,                     // AM - Сделка.FORMID
+    FORMID: 38,                     // AM - Сделka.FORMID
     YM_UID: 39,                     // AN - Сделка._ym_uid
     NOTES: 40                       // AO - Сделка.Примечания(через ;)
   },
+
+  // Маппинг колонок рабочего листа АМО - НЕПРАВИЛЬНАЯ ВЕРСИЯ (54+ столбцов)
+  WORKING_AMO_COLUMNS_INCORRECT: {
+    ID: 0,                          // A - ID
+    NAME: 1,                        // B - Название
+    RESPONSIBLE: 2,                 // C - Ответственный
+    CONTACT_NAME: 3,                // D - Контакт.ФИО
+    STATUS: 4,                      // E - Статус
+    BUDGET: 5,                      // F - Бюджет
+    CREATED_AT: 6,                  // G - Дата создания
+    RESPONSIBLE2: 7,                // H - Ответственный2
+    TAGS: 8,                        // I - Теги
+    CLOSED_AT: 9,                   // J - Дата закрытия
+    YM_CLIENT_ID: 10,               // K - YM_CLIENT_ID
+    GA_CLIENT_ID: 11,               // L - GA_CLIENT_ID
+    BUTTON_TEXT: 12,                // M - BUTTON_TEXT
+    DATE: 13,                       // N - DATE
+    TIME: 14,                       // O - TIME
+    DEAL_SOURCE: 15,                // P - R.Источник сделки
+    CITY_TAG: 16,                   // Q - R.Тег города
+    SOFTWARE: 17,                   // R - ПО
+    BAR_NAME: 18,                   // S - Бар (deal)
+    BOOKING_DATE: 19,               // T - Дата брони
+    GUEST_COUNT: 20,                // U - Кол-во гостей
+    VISIT_TIME: 21,                 // V - Время прихода
+    COMMENT: 22,                    // W - Комментарий МОБ
+    SOURCE: 23,                     // X - Источник
+    LEAD_TYPE: 24,                  // Y - Тип лида
+    REFUSAL_REASON: 25,             // Z - Причина отказа (ОБ)
+    GUEST_STATUS: 26,               // AA - R.Статусы гостей
+    REFERRAL_TYPE: 27,              // AB - Сарафан гости
+    UTM_MEDIUM: 28,                 // AC - UTM_MEDIUM
+    FORMNAME: 29,                   // AD - FORMNAME
+    REFERER: 30,                    // AE - REFERER
+    FORMID: 31,                     // AF - FORMID
+    UTM_SOURCE: 32,                 // AG - UTM_SOURCE
+    UTM_TERM: 33,                   // AH - UTM_TERM
+    UTM_CAMPAIGN: 34,               // AI - UTM_CAMPAIGN
+    UTM_CONTENT: 35,                // AJ - UTM_CONTENT
+    UTM_REFERRER: 36,               // AK - utm_referrer
+    YM_UID: 37,                     // AL - _ym_uid
+    PHONE: 38,                      // AM - Контакт.Телефон
+    CONTACT_MANGO: 39,              // AN - Контакт.Номер линии MANGO OFFICE
+    NOTES: 40,                      // AO - Примечания(через ;)
+    TRACKING_SOURCE: 41,            // AP - R.Источник ТЕЛ (коллтрекинг)
+    TRACKING_CHANNEL: 42            // AQ - Канал (коллтрекинг)
+    // ... остальные столбцы до 54
+  },
+
+  // Динамически определяемые колонки (будет установлено автоматически)
+  WORKING_AMO_COLUMNS: null,
 
   // Цветовая схема для отчетов
   COLORS: {
@@ -469,10 +520,90 @@ function safeFormatDate(date, format = null, timezone = null) {
   }
 }
 
+/**
+ * АВТОМАТИЧЕСКОЕ ОПРЕДЕЛЕНИЕ СТРУКТУРЫ ТАБЛИЦЫ
+ */
+function detectTableStructure() {
+  console.log('🔍 Определяем структуру таблицы...');
+  
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.WORKING_AMO);
+    
+    if (!sheet) {
+      console.error('❌ Лист РАБОЧИЙ_АМО не найден');
+      return null;
+    }
+    
+    const lastColumn = sheet.getLastColumn();
+    const headers = sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
+    
+    console.log(`📊 Обнаружено столбцов: ${lastColumn}`);
+    console.log('📋 Заголовки:', headers.slice(0, 10).join(', ') + '...');
+    
+    // Определяем структуру по количеству столбцов и ключевым заголовкам
+    if (lastColumn === 41 && headers[0] === 'Сделка.ID' && headers[1] === 'Сделка.Название') {
+      console.log('✅ Обнаружена ПРАВИЛЬНАЯ структура (41 столбец)');
+      CONFIG.WORKING_AMO_COLUMNS = CONFIG.WORKING_AMO_COLUMNS_CORRECT;
+      return 'correct';
+    } 
+    else if (lastColumn >= 50 && headers[0] === 'ID' && headers[1] === 'Название') {
+      console.log('⚠️ Обнаружена НЕПРАВИЛЬНАЯ структура (54+ столбцов)');
+      CONFIG.WORKING_AMO_COLUMNS = CONFIG.WORKING_AMO_COLUMNS_INCORRECT;
+      return 'incorrect';
+    }
+    else {
+      console.log('❓ Неизвестная структура таблицы');
+      console.log('🔧 Используем правильную структуру по умолчанию');
+      CONFIG.WORKING_AMO_COLUMNS = CONFIG.WORKING_AMO_COLUMNS_CORRECT;
+      return 'unknown';
+    }
+    
+  } catch (error) {
+    console.error('❌ Ошибка определения структуры:', error);
+    CONFIG.WORKING_AMO_COLUMNS = CONFIG.WORKING_AMO_COLUMNS_CORRECT;
+    return 'error';
+  }
+}
+
+/**
+ * ФУНКЦИЯ ПРОВЕРКИ И ИСПРАВЛЕНИЯ СТРУКТУРЫ
+ */
+function validateAndFixStructure() {
+  console.log('🔧 Проверяем и исправляем структуру...');
+  
+  const detectedType = detectTableStructure();
+  
+  if (detectedType === 'incorrect') {
+    console.log('⚠️ ВНИМАНИЕ: Обнаружена неправильная структура таблицы!');
+    console.log('💡 РЕКОМЕНДАЦИЯ: Используйте правильную структуру из 41 столбца');
+    console.log('📖 Список правильных столбцов:');
+    
+    const correctHeaders = [
+      'Сделка.ID', 'Сделка.Название', 'Сделка.Статус', 'Сделка.Причина отказа (ОБ)',
+      'Сделка.Тип лида', 'Сделка.R.Статусы гостей', 'Сделка.Ответственный', 'Сделка.Теги',
+      'Сделка.Бюджет', 'Сделка.Дата создания', 'Сделка.Дата закрытия', 'Контакт.Номер линии MANGO OFFICE',
+      'Сделка.Номер линии MANGO OFFICE', 'Контакт.ФИО', 'Контакт.Телефон'
+    ];
+    
+    correctHeaders.forEach((header, index) => {
+      console.log(`${String.fromCharCode(65 + index)} - ${header}`);
+    });
+    
+    return false;
+  }
+  
+  console.log('✅ Структура таблицы настроена корректно');
+  return true;
+}
+
 // Автоматическая валидация при загрузке
 try {
   validateConfiguration();
   const tokenStatus = validateApiTokens();
+  
+  // Определяем структуру таблицы
+  detectTableStructure();
+  
   console.log('🔧 Конфигурация AMO Analytics загружена успешно');
   
   if (!tokenStatus) {
