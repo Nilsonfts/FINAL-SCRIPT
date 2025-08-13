@@ -194,19 +194,22 @@ function buildMergedAmoFile() {
     // Загружаем и объединяем данные из двух источников
     const mergedData = loadAndMergeAmoSources_();
     
+    // Санитизация данных: приводим все к строкам перед записью
+    const sanitizedData = sanitizeDataForSheet_(mergedData);
+    
     // Записываем данные в лист
-    if (mergedData.length > 0) {
-      const range = sheet.getRange(2, 1, mergedData.length, mergedData[0].length);
-      range.setValues(mergedData);
+    if (sanitizedData.length > 0) {
+      const range = sheet.getRange(2, 1, sanitizedData.length, sanitizedData[0].length);
+      range.setValues(sanitizedData);
       
       // Автоподбор ширины колонок для первых колонок
-      sheet.autoResizeColumns(1, Math.min(15, mergedData[0].length));
+      sheet.autoResizeColumns(1, Math.min(15, sanitizedData[0].length));
     }
     
-    console.log(`✅ ОБЪЕДИНЕННАЯ ВЕРСИЯ: Записано ${mergedData.length} строк в РАБОЧИЙ_АМО`);
+    console.log(`✅ ОБЪЕДИНЕННАЯ ВЕРСИЯ: Записано ${sanitizedData.length} строк в РАБОЧИЙ_АМО`);
     
     // Записываем лог
-    writeProcessingLog_('MERGED_AMO', mergedData.length);
+    writeProcessingLog_('MERGED_AMO', sanitizedData.length);
     
   } catch (error) {
     console.error('❌ ОБЪЕДИНЕННАЯ ВЕРСИЯ: Ошибка сборки РАБОЧИЙ_АМО:', error);
@@ -237,16 +240,19 @@ function buildWorkingAmoFileClean() {
     // Загружаем и обрабатываем данные
     const consolidatedData = loadAndConsolidateAllDataClean_();
     
+    // Санитизация данных: приводим все к строкам перед записью
+    const sanitizedData = sanitizeDataForSheet_(consolidatedData);
+    
     // Записываем данные в лист
-    if (consolidatedData.length > 0) {
-      const range = sheet.getRange(2, 1, consolidatedData.length, consolidatedData[0].length);
-      range.setValues(consolidatedData);
+    if (sanitizedData.length > 0) {
+      const range = sheet.getRange(2, 1, sanitizedData.length, sanitizedData[0].length);
+      range.setValues(sanitizedData);
       
       // Автоподбор ширины колонок для первых колонок
-      sheet.autoResizeColumns(1, Math.min(10, consolidatedData[0].length));
+      sheet.autoResizeColumns(1, Math.min(10, sanitizedData[0].length));
     }
     
-    console.log(`✅ ЧИСТАЯ ВЕРСИЯ: Записано ${consolidatedData.length} строк в РАБОЧИЙ_АМО`);
+    console.log(`✅ ЧИСТАЯ ВЕРСИЯ: Записано ${sanitizedData.length} строк в РАБОЧИЙ_АМО`);
     
   } catch (error) {
     console.error('❌ ЧИСТАЯ ВЕРСИЯ: Ошибка сборки РАБОЧИЙ_АМО:', error);
@@ -279,16 +285,19 @@ function buildWorkingAmoFile() {
     // Загружаем и обрабатываем данные
     const consolidatedData = loadAndConsolidateAllData_();
     
+    // Санитизация данных: приводим все к строкам перед записью
+    const sanitizedData = sanitizeDataForSheet_(consolidatedData);
+    
     // Записываем данные в лист
-    if (consolidatedData.length > 0) {
-      const range = sheet.getRange(2, 1, consolidatedData.length, consolidatedData[0].length);
-      range.setValues(consolidatedData);
+    if (sanitizedData.length > 0) {
+      const range = sheet.getRange(2, 1, sanitizedData.length, sanitizedData[0].length);
+      range.setValues(sanitizedData);
       
       // Автоподбор ширины колонок для первых колонок
-      sheet.autoResizeColumns(1, Math.min(10, consolidatedData[0].length));
+      sheet.autoResizeColumns(1, Math.min(10, sanitizedData[0].length));
     }
     
-    console.log(`✅ Записано ${consolidatedData.length} строк в РАБОЧИЙ_АМО`);
+    console.log(`✅ Записано ${sanitizedData.length} строк в РАБОЧИЙ_АМО`);
     
   } catch (error) {
     console.error('❌ Ошибка сборки РАБОЧИЙ_АМО:', error);
@@ -1946,5 +1955,62 @@ function checkApiConfiguration() {
     console.log('2. Проверьте настройки API токенов в модуле 02_Конфигурация.gs');
     console.log('3. Убедитесь, что у скрипта есть необходимые разрешения');
   }
+}
+
+/**
+ * САНИТИЗАЦИЯ ДАННЫХ ДЛЯ ЗАПИСИ В ЛИСТ
+ */
+function sanitizeDataForSheet_(data) {
+  if (!data || !Array.isArray(data)) {
+    console.warn('⚠️ sanitizeDataForSheet_: Получены некорректные данные');
+    return [];
+  }
+  
+  console.log(`🧹 САНИТИЗАЦИЯ: Обрабатываю ${data.length} строк данных...`);
+  
+  const sanitizedData = data.map((row, rowIndex) => {
+    if (!Array.isArray(row)) {
+      console.warn(`⚠️ Строка ${rowIndex} не является массивом:`, row);
+      return [];
+    }
+    
+    return row.map((cell, cellIndex) => {
+      // Приводим все к строке и обрабатываем особые случаи
+      if (cell === null || cell === undefined) {
+        return '';
+      }
+      
+      if (typeof cell === 'string') {
+        return cell;
+      }
+      
+      if (typeof cell === 'number') {
+        return cell.toString();
+      }
+      
+      if (typeof cell === 'boolean') {
+        return cell.toString();
+      }
+      
+      if (cell instanceof Date) {
+        // Форматируем дату в ДД.ММ.ГГГГ
+        const day = String(cell.getDate()).padStart(2, '0');
+        const month = String(cell.getMonth() + 1).padStart(2, '0');
+        const year = cell.getFullYear();
+        return `${day}.${month}.${year}`;
+      }
+      
+      // Для всех остальных типов - приводим к строке
+      try {
+        return String(cell);
+      } catch (error) {
+        console.warn(`⚠️ Не удалось привести к строке [${rowIndex}][${cellIndex}]:`, cell);
+        return '';
+      }
+    });
+  });
+  
+  console.log(`✅ САНИТИЗАЦИЯ: Обработано ${sanitizedData.length} строк`);
+  return sanitizedData;
 }
 }
