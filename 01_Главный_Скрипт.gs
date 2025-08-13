@@ -227,6 +227,7 @@ function createCustomMenu_() {
       
       .addSubMenu(ui.createMenu('⚙️ Настройки')
         .addItem('🎨 Применить оформление', 'applySystemWideFormatting_')
+        .addItem('✨ Красивое оформление РАБОЧИЙ АМО', 'applyBeautifulStyleToWorkingAmo')
         .addItem('🔄 Пересоздать триггеры', 'setupTriggers_')
         .addItem('📧 Тест email уведомлений', 'testEmailNotifications')
         .addSeparator()

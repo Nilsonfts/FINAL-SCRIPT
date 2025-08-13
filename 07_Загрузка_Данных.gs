@@ -111,18 +111,22 @@ function processAmoCrmSheetsData_() {
     // 3. Обогащаем данными из дополнительных источников
     const enrichedData = enrichWithAdditionalData_(unifiedData);
     
-    // 4. Сохраняем в рабочий лист
+    // 4. Сохраняем в рабочий лист с красивым оформлением
     const workingSheet = getOrCreateSheet_('РАБОЧИЙ АМО');
     workingSheet.clear();
     
     if (enrichedData.header.length > 0) {
       workingSheet.getRange(1, 1, 1, enrichedData.header.length).setValues([enrichedData.header]);
-      applyHeaderStyle_(workingSheet.getRange(1, 1, 1, enrichedData.header.length));
-    }
-    
-    if (enrichedData.rows.length > 0) {
-      workingSheet.getRange(2, 1, enrichedData.rows.length, enrichedData.header.length).setValues(enrichedData.rows);
-      applyDataStyle_(workingSheet.getRange(2, 1, enrichedData.rows.length, enrichedData.header.length));
+      
+      if (enrichedData.rows.length > 0) {
+        workingSheet.getRange(2, 1, enrichedData.rows.length, enrichedData.header.length).setValues(enrichedData.rows);
+        
+        // Применяем красивое оформление с группировкой по блокам
+        applyWorkingAmoBeautifulStyle_(workingSheet, enrichedData.header, enrichedData.rows.length);
+      } else {
+        // Применяем стиль только к заголовкам, если нет данных
+        applyHeaderStyle_(workingSheet.getRange(1, 1, 1, enrichedData.header.length));
+      }
     }
     
     totalRecords = enrichedData.rows.length;
@@ -622,4 +626,52 @@ function syncWebFormsDataOnly() {
  */
 function syncCallTrackingDataOnly() {
   return processCallTrackingData_();
+}
+
+/**
+ * Применяет красивое оформление к существующему листу "РАБОЧИЙ АМО" 
+ * Можно вызвать отдельно для обновления стилей без пересоздания данных
+ */
+function applyBeautifulStyleToWorkingAmo() {
+  try {
+    logInfo_('STYLE', 'Начало применения красивого оформления к РАБОЧИЙ АМО');
+    
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    const workingSheet = spreadsheet.getSheetByName('РАБОЧИЙ АМО');
+    
+    if (!workingSheet) {
+      throw new Error('Лист "РАБОЧИЙ АМО" не найден. Сначала выполните синхронизацию данных.');
+    }
+    
+    const lastRow = workingSheet.getLastRow();
+    const lastCol = workingSheet.getLastColumn();
+    
+    if (lastRow < 1 || lastCol < 1) {
+      throw new Error('Лист "РАБОЧИЙ АМО" пуст. Сначала загрузите данные.');
+    }
+    
+    // Получаем заголовки
+    const header = workingSheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    const dataRows = lastRow - 1; // Вычитаем строку заголовков
+    
+    // Применяем красивое оформление
+    applyWorkingAmoBeautifulStyle_(workingSheet, header, dataRows);
+    
+    logInfo_('STYLE', `Красивое оформление применено к листу с ${lastCol} столбцами и ${dataRows} строками данных`);
+    
+    return {
+      success: true,
+      message: `✨ Красивое оформление применено к листу "РАБОЧИЙ АМО"!\n📊 Обработано: ${lastCol} столбцов, ${dataRows} строк\n🎨 Добавлено: группировка блоков, чередование цветов, обводка`,
+      columns: lastCol,
+      rows: dataRows
+    };
+    
+  } catch (error) {
+    logError_('STYLE', 'Ошибка применения красивого оформления', error);
+    return {
+      success: false,
+      message: `❌ Ошибка: ${error.message}`,
+      error: error.message
+    };
+  }
 }

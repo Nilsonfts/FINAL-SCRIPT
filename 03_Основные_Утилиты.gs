@@ -457,6 +457,292 @@ function applyDataStyle_(range) {
 }
 
 /**
+ * Применяет красивое оформление для листа "РАБОЧИЙ АМО" с группировкой по блокам
+ * @param {Sheet} sheet - Лист для оформления
+ * @param {Array} header - Заголовки столбцов
+ * @param {number} dataRows - Количество строк данных
+ */
+function applyWorkingAmoBeautifulStyle_(sheet, header, dataRows) {
+  try {
+    if (!sheet || !header || header.length === 0 || dataRows === 0) return;
+    
+    logInfo_('STYLE', 'Применение красивого оформления к РАБОЧИЙ АМО');
+    
+    // Определяем блоки столбцов для группировки
+    const columnGroups = getWorkingAmoColumnGroups_(header);
+    
+    // 1. Стилизация заголовков с группировкой
+    styleWorkingAmoHeaders_(sheet, header, columnGroups);
+    
+    // 2. Стилизация данных с чередующимися цветами
+    styleWorkingAmoData_(sheet, header.length, dataRows, columnGroups);
+    
+    // 3. Установка оптимальной ширины столбцов
+    autoResizeWorkingAmoColumns_(sheet, header);
+    
+    // 4. Замораживание первой строки
+    sheet.setFrozenRows(1);
+    
+    logInfo_('STYLE', `Красивое оформление применено к ${header.length} столбцам и ${dataRows} строкам`);
+    
+  } catch (error) {
+    logError_('STYLE', 'Ошибка применения красивого оформления', error);
+  }
+}
+
+/**
+ * Определяет группы столбцов для блочного оформления
+ * @param {Array} header - Заголовки столбцов
+ * @returns {Array} Массив групп с информацией о столбцах
+ * @private
+ */
+function getWorkingAmoColumnGroups_(header) {
+  const groups = [];
+  let currentGroup = { name: '', startIndex: 0, endIndex: 0, color: '' };
+  
+  // Цвета для блоков (мягкие пастельные тона)
+  const blockColors = [
+    '#E3F2FD', // Светло-голубой
+    '#F3E5F5', // Светло-фиолетовый  
+    '#E8F5E8', // Светло-зеленый
+    '#FFF3E0', // Светло-оранжевый
+    '#FCE4EC', // Светло-розовый
+    '#F1F8E9', // Светло-салатовый
+    '#E0F2F1', // Светло-бирюзовый
+    '#FFF8E1'  // Светло-желтый
+  ];
+  
+  for (let i = 0; i < header.length; i++) {
+    const columnName = String(header[i]).toLowerCase();
+    
+    // Определяем тип столбца по названию
+    let groupType = '';
+    
+    if (columnName.includes('сделка') || columnName.includes('deal') || 
+        columnName.includes('id') || columnName.includes('название')) {
+      groupType = 'Основные данные';
+    } else if (columnName.includes('контакт') || columnName.includes('телефон') || 
+               columnName.includes('email') || columnName.includes('имя')) {
+      groupType = 'Контактные данные';
+    } else if (columnName.includes('статус') || columnName.includes('этап') || 
+               columnName.includes('pipeline')) {
+      groupType = 'Статус и этапы';
+    } else if (columnName.includes('дата') || columnName.includes('время') || 
+               columnName.includes('date') || columnName.includes('time')) {
+      groupType = 'Временные данные';
+    } else if (columnName.includes('utm') || columnName.includes('источник') || 
+               columnName.includes('канал') || columnName.includes('метка')) {
+      groupType = 'UTM и источники';
+    } else if (columnName.includes('res.') || columnName.includes('reserves')) {
+      groupType = 'Reserves RP';
+    } else if (columnName.includes('gue.') || columnName.includes('guests')) {
+      groupType = 'Guests RP';
+    } else if (columnName.includes('тел') || columnName.includes('колл')) {
+      groupType = 'Колл-трекинг';
+    } else {
+      groupType = 'Дополнительно';
+    }
+    
+    // Если начинается новая группа
+    if (currentGroup.name !== groupType) {
+      // Завершаем предыдущую группу
+      if (i > 0) {
+        currentGroup.endIndex = i - 1;
+        groups.push({ ...currentGroup });
+      }
+      
+      // Начинаем новую группу
+      currentGroup = {
+        name: groupType,
+        startIndex: i,
+        endIndex: i,
+        color: blockColors[groups.length % blockColors.length]
+      };
+    }
+  }
+  
+  // Завершаем последнюю группу
+  if (currentGroup.name) {
+    currentGroup.endIndex = header.length - 1;
+    groups.push(currentGroup);
+  }
+  
+  return groups;
+}
+
+/**
+ * Стилизует заголовки с группировкой по блокам
+ * @param {Sheet} sheet - Лист
+ * @param {Array} header - Заголовки
+ * @param {Array} groups - Группы столбцов
+ * @private
+ */
+function styleWorkingAmoHeaders_(sheet, header, groups) {
+  try {
+    const headerRange = sheet.getRange(1, 1, 1, header.length);
+    
+    // Базовый стиль заголовков
+    headerRange
+      .setFontWeight('bold')
+      .setFontSize(11)
+      .setFontColor('#1a1a1a')
+      .setHorizontalAlignment('center')
+      .setVerticalAlignment('middle')
+      .setWrap(true);
+    
+    // Применяем стиль по группам
+    groups.forEach((group, groupIndex) => {
+      const groupRange = sheet.getRange(1, group.startIndex + 1, 1, group.endIndex - group.startIndex + 1);
+      
+      // Цвет заголовка группы (более насыщенный чем фон данных)
+      const headerColor = darkenColor_(group.color, 0.3);
+      
+      groupRange
+        .setBackground(headerColor)
+        .setBorder(true, true, true, true, false, false, '#666666', SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+      
+      // Добавляем название группы как комментарий к первому столбцу группы  
+      if (group.name) {
+        const firstCell = sheet.getRange(1, group.startIndex + 1);
+        firstCell.setNote(`Блок: ${group.name}`);
+      }
+    });
+    
+  } catch (error) {
+    logWarning_('STYLE', 'Ошибка стилизации заголовков', error);
+  }
+}
+
+/**
+ * Стилизует данные с чередующимися цветами по группам
+ * @param {Sheet} sheet - Лист
+ * @param {number} numColumns - Количество столбцов
+ * @param {number} numRows - Количество строк данных
+ * @param {Array} groups - Группы столбцов
+ * @private
+ */
+function styleWorkingAmoData_(sheet, numColumns, numRows, groups) {
+  try {
+    if (numRows === 0) return;
+    
+    // Цвета для чередования строк
+    const evenRowColor = '#FFFFFF';  // Белый для четных строк
+    const oddRowColor = '#F8F9FA';   // Очень светло-серый для нечетных строк
+    
+    // Применяем чередующиеся цвета строк
+    for (let row = 2; row <= numRows + 1; row++) {
+      const rowRange = sheet.getRange(row, 1, 1, numColumns);
+      const backgroundColor = (row % 2 === 0) ? evenRowColor : oddRowColor;
+      
+      rowRange
+        .setBackground(backgroundColor)
+        .setFontSize(10)
+        .setFontFamily('Arial')
+        .setVerticalAlignment('middle');
+    }
+    
+    // Применяем стиль по блокам столбцов
+    groups.forEach((group) => {
+      const groupRange = sheet.getRange(2, group.startIndex + 1, numRows, group.endIndex - group.startIndex + 1);
+      
+      // Добавляем легкую обводку блока
+      groupRange.setBorder(
+        true,  // top
+        true,  // left 
+        true,  // bottom
+        true,  // right
+        false, // vertical
+        false, // horizontal
+        '#CCCCCC', // color
+        SpreadsheetApp.BorderStyle.SOLID // style
+      );
+      
+      // Применяем очень легкий оттенок цвета группы к данным
+      const lightGroupColor = lightenColor_(group.color, 0.8);
+      
+      // Применяем оттенок только к нечетным строкам для сохранения чередования
+      for (let row = 2; row <= numRows + 1; row++) {
+        if (row % 2 !== 0) { // Нечетные строки
+          const cellRange = sheet.getRange(row, group.startIndex + 1, 1, group.endIndex - group.startIndex + 1);
+          cellRange.setBackground(lightGroupColor);
+        }
+      }
+    });
+    
+  } catch (error) {
+    logWarning_('STYLE', 'Ошибка стилизации данных', error);
+  }
+}
+
+/**
+ * Устанавливает оптимальную ширину столбцов
+ * @param {Sheet} sheet - Лист
+ * @param {Array} header - Заголовки столбцов
+ * @private
+ */
+function autoResizeWorkingAmoColumns_(sheet, header) {
+  try {
+    // Автоматически подгоняем ширину всех столбцов
+    sheet.autoResizeColumns(1, header.length);
+    
+    // Устанавливаем минимальную и максимальную ширину для читабельности
+    for (let col = 1; col <= header.length; col++) {
+      const currentWidth = sheet.getColumnWidth(col);
+      
+      // Минимальная ширина 80px, максимальная 300px
+      if (currentWidth < 80) {
+        sheet.setColumnWidth(col, 80);
+      } else if (currentWidth > 300) {
+        sheet.setColumnWidth(col, 300);
+      }
+    }
+    
+  } catch (error) {
+    logWarning_('STYLE', 'Ошибка изменения размера столбцов', error);
+  }
+}
+
+/**
+ * Делает цвет темнее на указанный процент
+ * @param {string} color - Исходный цвет в HEX формате
+ * @param {number} percent - Процент затемнения (0.0 - 1.0)
+ * @returns {string} Затемненный цвет
+ * @private
+ */
+function darkenColor_(color, percent) {
+  try {
+    const num = parseInt(color.replace('#', ''), 16);
+    const amt = Math.round(255 * percent);
+    const R = Math.max(0, (num >> 16) - amt);
+    const G = Math.max(0, (num >> 8 & 0x00FF) - amt);  
+    const B = Math.max(0, (num & 0x0000FF) - amt);
+    return '#' + (0x1000000 + R * 0x10000 + G * 0x100 + B).toString(16).slice(1);
+  } catch (error) {
+    return color; // Возвращаем исходный цвет при ошибке
+  }
+}
+
+/**
+ * Делает цвет светлее на указанный процент
+ * @param {string} color - Исходный цвет в HEX формате
+ * @param {number} percent - Процент осветления (0.0 - 1.0)
+ * @returns {string} Осветленный цвет
+ * @private
+ */
+function lightenColor_(color, percent) {
+  try {
+    const num = parseInt(color.replace('#', ''), 16);
+    const amt = Math.round(255 * percent);
+    const R = Math.min(255, (num >> 16) + amt);
+    const G = Math.min(255, (num >> 8 & 0x00FF) + amt);
+    const B = Math.min(255, (num & 0x0000FF) + amt);
+    return '#' + (0x1000000 + R * 0x10000 + G * 0x100 + B).toString(16).slice(1);
+  } catch (error) {
+    return color; // Возвращаем исходный цвет при ошибке
+  }
+}
+
+/**
  * Валидирует наличие API ключа
  */
 function validateApiKey() {
