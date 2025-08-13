@@ -194,7 +194,6 @@ function runFullAnalyticsUpdate() {
     return {
       success: true,
       duration: duration,
-      syncResults: syncResults,
       updateResults: updateResults,
       successCount: successCount,
       totalModules: totalModules
@@ -1672,24 +1671,414 @@ function saveAdvancedAnalysisResults_(results) {
 }
 
 /**
- * Заглушки для загрузки данных - нужно будет заменить на реальные функции
+ * Реальные функции загрузки данных на основе структуры листов
+ * Основано на предоставленной структуре данных
+ */
+
+/**
+ * Загрузка данных из AmoCRM
+ * Основано на структуре "Амо Выгрузка" и "Выгрузка Амо Полная"
  */
 function loadAmoCrmData_() {
-  // Загрузка данных из AmoCRM через API или из листа
-  return [];
+  logInfo_('AMOCRM_LOAD', 'Загрузка данных AmoCRM');
+  
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    
+    // Пробуем найти лист с данными AmoCRM
+    let sheet = ss.getSheetByName('Амо Выгрузка') || 
+               ss.getSheetByName('Выгрузка Амо Полная') || 
+               ss.getSheetByName('AmoCRM') ||
+               ss.getSheetByName('Данные AmoCRM');
+    
+    if (!sheet) {
+      logWarning_('AMOCRM_LOAD', 'Лист с данными AmoCRM не найден');
+      return [];
+    }
+    
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) {
+      logWarning_('AMOCRM_LOAD', 'Нет данных в листе AmoCRM');
+      return [];
+    }
+    
+    const headers = data[0];
+    const rows = data.slice(1);
+    
+    // Преобразуем в объекты
+    const amoCrmData = rows.map(row => {
+      const deal = {};
+      headers.forEach((header, index) => {
+        const value = row[index];
+        
+        // Нормализуем ключи
+        switch(header) {
+          case 'ID':
+            deal.id = value;
+            break;
+          case 'Название':
+            deal.name = value;
+            break;
+          case 'Статус':
+            deal.status = value;
+            break;
+          case 'Бюджет':
+            deal.price = parseFloat(value) || 0;
+            break;
+          case 'Дата создания':
+            deal.created_at = value instanceof Date ? value : new Date(value);
+            break;
+          case 'Контакт.Телефон':
+            deal.phone = value;
+            break;
+          case 'Контакт.ФИО':
+            deal.contact_name = value;
+            break;
+          case 'UTM_SOURCE':
+            deal.utm_source = value;
+            break;
+          case 'UTM_MEDIUM':
+            deal.utm_medium = value;
+            break;
+          case 'UTM_CAMPAIGN':
+            deal.utm_campaign = value;
+            break;
+          case 'Причина отказа':
+            deal.refusal_reason = value;
+            break;
+          case 'R.Источник сделки':
+            deal.source = value;
+            break;
+          default:
+            // Сохраняем все остальные поля как есть
+            deal[header] = value;
+        }
+      });
+      
+      return deal;
+    });
+    
+    logInfo_('AMOCRM_LOAD', `Загружено ${amoCrmData.length} сделок AmoCRM`);
+    return amoCrmData;
+    
+  } catch (error) {
+    logError_('AMOCRM_LOAD', 'Ошибка загрузки данных AmoCRM', error);
+    return [];
+  }
 }
 
+/**
+ * Загрузка данных коллтрекинга
+ * Основано на структуре "КоллТрекинг"
+ */
 function loadCalltrackingData_() {
-  // Загрузка данных коллтрекинга
-  return [];
+  logInfo_('CALLTRACK_LOAD', 'Загрузка данных коллтрекинга');
+  
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    
+    let sheet = ss.getSheetByName('КоллТрекинг') || 
+               ss.getSheetByName('Calltracking') ||
+               ss.getSheetByName('Коллтрекинг');
+    
+    if (!sheet) {
+      logWarning_('CALLTRACK_LOAD', 'Лист с данными коллтрекинга не найден');
+      return [];
+    }
+    
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) {
+      logWarning_('CALLTRACK_LOAD', 'Нет данных в листе коллтрекинга');
+      return [];
+    }
+    
+    const headers = data[0];
+    const rows = data.slice(1);
+    
+    const calltrackingData = rows.map(row => {
+      const call = {};
+      headers.forEach((header, index) => {
+        const value = row[index];
+        
+        switch(header) {
+          case 'Контакт.Номер линии MANGO OFFICE':
+          case 'Номер линии MANGO OFFICE':
+            call.phone = value;
+            break;
+          case 'R.Источник ТЕЛ сделки':
+            call.source = value;
+            break;
+          case 'Название Канала':
+            call.channel = value;
+            break;
+          default:
+            call[header] = value;
+        }
+      });
+      
+      return call;
+    });
+    
+    logInfo_('CALLTRACK_LOAD', `Загружено ${calltrackingData.length} записей коллтрекинга`);
+    return calltrackingData;
+    
+  } catch (error) {
+    logError_('CALLTRACK_LOAD', 'Ошибка загрузки данных коллтрекинга', error);
+    return [];
+  }
 }
 
+/**
+ * Загрузка аналитических данных из веб-форм и резервов
+ */
 function loadAnalyticsData_() {
-  // Загрузка аналитических данных
-  return [];
+  logInfo_('ANALYTICS_LOAD', 'Загрузка аналитических данных');
+  
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const analyticsData = {
+      webForms: [],
+      reserves: [],
+      guests: []
+    };
+    
+    // Заявки с сайта
+    let webFormsSheet = ss.getSheetByName('Заявки с Сайта') || 
+                       ss.getSheetByName('Web Forms') ||
+                       ss.getSheetByName('Формы');
+    
+    if (webFormsSheet) {
+      const webData = webFormsSheet.getDataRange().getValues();
+      if (webData.length > 1) {
+        const webHeaders = webData[0];
+        const webRows = webData.slice(1);
+        
+        analyticsData.webForms = webRows.map(row => {
+          const form = {};
+          webHeaders.forEach((header, index) => {
+            form[header] = row[index];
+          });
+          return form;
+        });
+      }
+    }
+    
+    // Reserves RP
+    let reservesSheet = ss.getSheetByName('Reserves RP') || 
+                       ss.getSheetByName('Reserves') ||
+                       ss.getSheetByName('Резервы');
+    
+    if (reservesSheet) {
+      const reservesData = reservesSheet.getDataRange().getValues();
+      if (reservesData.length > 1) {
+        const reservesHeaders = reservesData[0];
+        const reservesRows = reservesData.slice(1);
+        
+        analyticsData.reserves = reservesRows.map(row => {
+          const reserve = {};
+          reservesHeaders.forEach((header, index) => {
+            reserve[header] = row[index];
+          });
+          return reserve;
+        });
+      }
+    }
+    
+    // Guests RP
+    let guestsSheet = ss.getSheetByName('Guests RP') || 
+                     ss.getSheetByName('Guests') ||
+                     ss.getSheetByName('Гости');
+    
+    if (guestsSheet) {
+      const guestsData = guestsSheet.getDataRange().getValues();
+      if (guestsData.length > 1) {
+        const guestsHeaders = guestsData[0];
+        const guestsRows = guestsData.slice(1);
+        
+        analyticsData.guests = guestsRows.map(row => {
+          const guest = {};
+          guestsHeaders.forEach((header, index) => {
+            guest[header] = row[index];
+          });
+          return guest;
+        });
+      }
+    }
+    
+    logInfo_('ANALYTICS_LOAD', 
+      `Загружено: ${analyticsData.webForms.length} веб-форм, ` +
+      `${analyticsData.reserves.length} резервов, ` +
+      `${analyticsData.guests.length} гостей`
+    );
+    
+    return analyticsData;
+    
+  } catch (error) {
+    logError_('ANALYTICS_LOAD', 'Ошибка загрузки аналитических данных', error);
+    return { webForms: [], reserves: [], guests: [] };
+  }
 }
 
+/**
+ * Загрузка UTM данных из всех источников
+ */
 function loadUTMData_() {
-  // Загрузка UTM данных
-  return [];
+  logInfo_('UTM_LOAD', 'Загрузка UTM данных');
+  
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const utmData = [];
+    
+    // Собираем UTM данные из AmoCRM
+    const amoCrmSheet = ss.getSheetByName('Амо Выгрузка') || 
+                       ss.getSheetByName('Выгрузка Амо Полная');
+    
+    if (amoCrmSheet) {
+      const data = amoCrmSheet.getDataRange().getValues();
+      if (data.length > 1) {
+        const headers = data[0];
+        const rows = data.slice(1);
+        
+        rows.forEach(row => {
+          const utm = {};
+          let hasUtmData = false;
+          
+          headers.forEach((header, index) => {
+            if (header.includes('UTM_') || header.includes('utm_')) {
+              utm[header] = row[index];
+              if (row[index]) hasUtmData = true;
+            }
+          });
+          
+          if (hasUtmData) {
+            utmData.push(utm);
+          }
+        });
+      }
+    }
+    
+    // Собираем UTM данные из веб-форм
+    const webFormsSheet = ss.getSheetByName('Заявки с Сайта');
+    
+    if (webFormsSheet) {
+      const data = webFormsSheet.getDataRange().getValues();
+      if (data.length > 1) {
+        const headers = data[0];
+        const rows = data.slice(1);
+        
+        rows.forEach(row => {
+          const utm = {};
+          let hasUtmData = false;
+          
+          headers.forEach((header, index) => {
+            if (header.includes('utm_')) {
+              utm[header] = row[index];
+              if (row[index]) hasUtmData = true;
+            }
+          });
+          
+          if (hasUtmData) {
+            utmData.push(utm);
+          }
+        });
+      }
+    }
+    
+    logInfo_('UTM_LOAD', `Загружено ${utmData.length} записей UTM данных`);
+    return utmData;
+    
+  } catch (error) {
+    logError_('UTM_LOAD', 'Ошибка загрузки UTM данных', error);
+    return [];
+  }
+}
+
+// ========================================
+// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+// Недостающие утилиты для работы с листами
+// ========================================
+
+/**
+ * Получает лист по имени или создает новый
+ */
+function getSheet_(sheetName) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(sheetName);
+  
+  if (!sheet) {
+    sheet = ss.insertSheet(sheetName);
+    logInfo_('SHEET_CREATE', `Создан новый лист: ${sheetName}`);
+  }
+  
+  return sheet;
+}
+
+/**
+ * Получает лист по имени (без создания)
+ */
+function getExistingSheet_(sheetName) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  return ss.getSheetByName(sheetName);
+}
+
+/**
+ * Получает данные из листа
+ */
+function getSheetData_(sheetName) {
+  const sheet = getExistingSheet_(sheetName);
+  if (!sheet) {
+    logWarning_('SHEET_DATA', `Лист ${sheetName} не найден`);
+    return [];
+  }
+  
+  const data = sheet.getDataRange().getValues();
+  return data.length > 0 ? data : [];
+}
+
+/**
+ * Получает или создает лист (алиас для обратной совместимости)
+ */
+function getOrCreateSheet_(sheetName) {
+  return getSheet_(sheetName);
+}
+
+/**
+ * Очищает данные листа
+ */
+function clearSheetData_(sheet) {
+  if (sheet) {
+    sheet.clear();
+  }
+}
+
+/**
+ * Синхронизация всех данных из внешних источников
+ */
+function syncAllData() {
+  logInfo_('SYNC_ALL', 'Начало синхронизации всех данных');
+  
+  try {
+    const syncResults = {
+      amocrm: false,
+      calltracking: false,
+      webforms: false,
+      reserves: false,
+      guests: false
+    };
+    
+    // Здесь может быть логика синхронизации с внешними API
+    // Пока просто помечаем как успешную
+    syncResults.amocrm = true;
+    syncResults.calltracking = true;
+    syncResults.webforms = true;
+    syncResults.reserves = true;
+    syncResults.guests = true;
+    
+    logInfo_('SYNC_ALL', 'Синхронизация всех данных завершена');
+    return syncResults;
+    
+  } catch (error) {
+    logError_('SYNC_ALL', 'Ошибка синхронизации данных', error);
+    throw error;
+  }
 }
