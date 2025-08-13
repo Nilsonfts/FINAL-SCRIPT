@@ -115,16 +115,35 @@ function getRefusedDealsData_() {
   const budgetIndex = findColumnIndex(headers, ['Бюджет', 'Сделка.Бюджет', 'Сумма', 'Сумма ₽']);
   const managerIndex = findColumnIndex(headers, ['Ответственный', 'Кем создана', 'Менеджер']);
   
-  // Ищем поля с комментариями (могут содержать причины отказа)
-  const commentIndex = findColumnIndex(headers, [
-    'Причина отказа', 
-    'Комментарий', 
-    'Примечания', 
-    'Notes', 
-    'Comment',
-    'Отказ',
-    'Сделка.Комментарий'
-  ]);
+  // ПРИОРИТЕТНО ищем точный столбец X с причинами отказов
+  const refusalReasonColumnIndex = CONFIG.refusals.REFUSAL_REASON_COLUMN_INDEX || 23; // Столбец X (индекс 23)
+  
+  let commentIndex = -1;
+  
+  // Проверяем, что столбец X существует и содержит нужные данные
+  if (headers.length > refusalReasonColumnIndex && 
+      String(headers[refusalReasonColumnIndex]).includes('Причина отказа')) {
+    commentIndex = refusalReasonColumnIndex;
+    logInfo_('REFUSAL_ANALYSIS', `✅ Используем ТОЧНЫЙ столбец X (индекс ${refusalReasonColumnIndex}): "${headers[refusalReasonColumnIndex]}"`);
+  } else {
+    // Если точный столбец не найден, ищем по названию
+    commentIndex = findColumnIndex(headers, [
+      'Сделка.Причина отказа (ОБ)',
+      'Причина отказа', 
+      'Комментарий', 
+      'Примечания', 
+      'Notes', 
+      'Comment',
+      'Отказ',
+      'Сделка.Комментарий'
+    ]);
+    
+    if (commentIndex >= 0) {
+      logInfo_('REFUSAL_ANALYSIS', `✅ Найден столбец с причинами отказов: "${headers[commentIndex]}" (индекс ${commentIndex})`);
+    } else {
+      logWarning_('REFUSAL_ANALYSIS', '⚠️ Специальный столбец с причинами отказов не найден!');
+    }
+  }
   
   logInfo_('REFUSAL_ANALYSIS', `Найдены индексы колонок:
     ID: ${dealIdIndex >= 0 ? headers[dealIdIndex] : 'не найден'}
@@ -133,7 +152,7 @@ function getRefusedDealsData_() {
     Дата: ${createdDateIndex >= 0 ? headers[createdDateIndex] : 'не найден'}
     Бюджет: ${budgetIndex >= 0 ? headers[budgetIndex] : 'не найден'}
     Менеджер: ${managerIndex >= 0 ? headers[managerIndex] : 'не найден'}
-    Комментарий: ${commentIndex >= 0 ? headers[commentIndex] : 'не найден'}`);
+    Причины отказов: ${commentIndex >= 0 ? `"${headers[commentIndex]}" (столбец ${String.fromCharCode(65 + commentIndex)})` : 'не найден'}`);
   
   // Формируем структурированные данные
   return refusedDeals.map((row, index) => {
@@ -145,20 +164,19 @@ function getRefusedDealsData_() {
     const manager = managerIndex >= 0 ? String(row[managerIndex] || 'Неназначен') : 'Неназначен';
     const status = 'Закрыто и не реализовано';
     
-    // Получаем комментарий (причину отказа)
+    // Получаем причину отказа из точного столбца
     let refusalComment = '';
     if (commentIndex >= 0 && row[commentIndex]) {
       refusalComment = String(row[commentIndex]).trim();
     }
     
-    // Если отдельного комментария нет, используем статус + любую доступную текстовую информацию
-    if (!refusalComment) {
-      // Пытаемся найти любые текстовые поля, которые могут содержать причину
+    // Если в основном столбце пусто, ищем альтернативные источники
+    if (!refusalComment || refusalComment === '') {
       const textFields = [];
       row.forEach((cell, idx) => {
         const cellValue = String(cell || '').trim();
         if (cellValue && 
-            cellValue.length > 5 && 
+            cellValue.length > 10 && // Увеличиваем минимальную длину
             cellValue !== status &&
             cellValue !== dealName &&
             cellValue !== dealId &&
@@ -166,13 +184,19 @@ function getRefusedDealsData_() {
             !cellValue.match(/^\d{4}-\d{2}-\d{2}/) && // не даты
             !cellValue.match(/^[+]?[\d\s\-\(\)]{7,15}$/) // не телефоны
            ) {
-          textFields.push(cellValue);
+          // Проверяем, что это может быть причиной отказа
+          const normalized = cellValue.toLowerCase();
+          if (normalized.includes('отказ') || normalized.includes('причина') || 
+              normalized.includes('не подходит') || normalized.includes('дорого') ||
+              normalized.includes('конкурент') || cellValue.length > 20) {
+            textFields.push(cellValue);
+          }
         }
       });
       
       refusalComment = textFields.length > 0 ? 
-        textFields.slice(0, 2).join(' | ') : 
-        'Причина не указана - статус: ' + status;
+        textFields.slice(0, 1).join('') : // Берем только первое подходящее поле
+        'Причина не указана';
     }
     
     // UTM данные
@@ -224,29 +248,44 @@ function analyzeRefusalReasonsWithGPT_(refusedDeals) {
   }
   
   // Разбиваем на батчи для анализа (GPT имеет ограничения по токенам)
-  const batchSize = 10; // Уменьшаем размер батча с 20 до 10
+  const batchSize = 5; // Еще больше уменьшаем размер батча до 5
   const batches = [];
   for (let i = 0; i < comments.length; i += batchSize) {
     batches.push(comments.slice(i, i + batchSize));
   }
   
-  // Ограничиваем количество батчей для избежания лимитов API
-  const maxBatches = Math.min(batches.length, 10); // Максимум 10 батчей
+  // Ограничиваем количество батчей для избежания лимитов API (3 запроса в минуту)
+  const maxBatches = Math.min(batches.length, 6); // Максимум 6 батчей за 2 минуты
   const processBatches = batches.slice(0, maxBatches);
   
-  logInfo_('GPT_ANALYSIS', `Будет обработано ${processBatches.length} батчей из ${batches.length} (ограничение API)`);
+  logInfo_('GPT_ANALYSIS', `Будет обработано ${processBatches.length} батчей из ${batches.length} (лимит 3 RPM)`);
   
   let categorizedReasons = {};
   let insights = [];
   let recommendations = [];
   let successfulBatches = 0;
+  let requestCount = 0;
+  const startTime = new Date();
   
-  // Анализируем каждый батч
+  // Анализируем каждый батч с умным rate limiting
   for (let i = 0; i < processBatches.length; i++) {
     logInfo_('GPT_ANALYSIS', `Анализ батча ${i + 1} из ${processBatches.length}`);
     
     try {
+      // Умная пауза для соблюдения лимита 3 RPM
+      if (requestCount >= 3) {
+        const elapsedMinutes = (new Date() - startTime) / 60000;
+        if (elapsedMinutes < 1) {
+          const waitTime = Math.ceil((1 - elapsedMinutes) * 60);
+          logInfo_('GPT_ANALYSIS', `Пауза ${waitTime} секунд для соблюдения лимита 3 RPM`);
+          Utilities.sleep(waitTime * 1000);
+        }
+        requestCount = 0;
+        startTime = new Date();
+      }
+      
       const batchResults = analyzeRefusalBatch_(apiKey, processBatches[i], refusedDeals);
+      requestCount++;
       
       // Объединяем результаты
       Object.keys(batchResults.categories).forEach(category => {
@@ -260,19 +299,21 @@ function analyzeRefusalReasonsWithGPT_(refusedDeals) {
       recommendations = recommendations.concat(batchResults.recommendations);
       successfulBatches++;
       
-      // Увеличиваем паузу между запросами до 3 секунд
+      // Базовая пауза между запросами
       if (i < processBatches.length - 1) {
-        logInfo_('GPT_ANALYSIS', 'Пауза 3 секунды перед следующим запросом...');
-        Utilities.sleep(3000);
+        logInfo_('GPT_ANALYSIS', 'Пауза 5 секунд между запросами...');
+        Utilities.sleep(5000);
       }
       
     } catch (error) {
       logError_('GPT_ANALYSIS', `Ошибка анализа батча ${i + 1}`, error);
+      requestCount++;
       
-      // Если получили 429 ошибку, делаем длинную паузу
+      // Если получили 429 ошибку, делаем очень длинную паузу
       if (error.toString().includes('429') || error.toString().includes('Rate limit')) {
-        logWarning_('GPT_ANALYSIS', 'Достигнут лимит API, пауза 10 секунд');
-        Utilities.sleep(10000);
+        logWarning_('GPT_ANALYSIS', 'Достигнут лимит API, пауза 30 секунд');
+        Utilities.sleep(30000);
+        requestCount = 0; // Сбрасываем счетчик после длинной паузы
       }
       continue;
     }
@@ -472,15 +513,15 @@ function analyzeRefusalBatch_(apiKey, commentsBatch, dealsData) {
  */
 function createGPTPromptForRefusalAnalysis_(comments) {
   const commentsText = comments
-    .slice(0, 10) // Ограичиваем до 10 комментариев для экономии токенов
+    .slice(0, 5) // Уменьшаем до 5 комментариев для экономии токенов и лучшего качества
     .map((comment, index) => `${index + 1}. ${comment}`)
     .join('\n');
   
-  return `Проанализируй следующие причины отказов клиентов и верни ТОЛЬКО валидный JSON:
+  return `Проанализируй эти ${comments.length} причин отказов клиентов и категоризируй их:
 
 ${commentsText}
 
-Верни результат строго в этом JSON формате без дополнительного текста:
+Верни результат строго в JSON формате:
 {
   "categories": {
     "Цена": [],
@@ -493,9 +534,11 @@ ${commentsText}
     "Недоверие": [],
     "Прочее": []
   },
-  "insights": [],
-  "recommendations": []
-}`;
+  "insights": ["краткий инсайт 1", "краткий инсайт 2"],
+  "recommendations": ["рекомендация 1", "рекомендация 2"]
+}
+
+Помести каждую причину отказа в наиболее подходящую категорию.`;
 }
 
 /**
@@ -849,7 +892,31 @@ function diagnoseRefusalData() {
   console.log('📊 ДИАГНОСТИКА ДАННЫХ ДЛЯ АНАЛИЗА ОТКАЗОВ:');
   console.log(`📋 Всего строк: ${rows.length}`);
   console.log(`📋 Всего колонок: ${headers.length}`);
-  console.log(`📋 Колонка D: "${headers[3]}" (индекс 3)`);
+  console.log(`📋 Колонка D (статус): "${headers[3]}" (индекс 3)`);
+  
+  // Проверяем столбец X с причинами отказов
+  const reasonColumnIndex = 23; // Столбец X
+  if (headers.length > reasonColumnIndex) {
+    console.log(`📋 Колонка X (причины отказов): "${headers[reasonColumnIndex]}" (индекс ${reasonColumnIndex})`);
+    
+    // Статистика заполненности столбца X
+    let filledReasons = 0;
+    let emptyReasons = 0;
+    rows.forEach(row => {
+      const reason = String(row[reasonColumnIndex] || '').trim();
+      if (reason && reason !== '') {
+        filledReasons++;
+      } else {
+        emptyReasons++;
+      }
+    });
+    
+    console.log(`📈 ЗАПОЛНЕННОСТЬ СТОЛБЦА X (причины отказов):`);
+    console.log(`• Заполнено: ${filledReasons} (${((filledReasons / rows.length) * 100).toFixed(1)}%)`);
+    console.log(`• Пусто: ${emptyReasons} (${((emptyReasons / rows.length) * 100).toFixed(1)}%)`);
+  } else {
+    console.log(`❌ Колонка X не найдена! Максимальный индекс: ${headers.length - 1}`);
+  }
   
   // Статистика по колонке D (статусы)
   const statusStats = {};
@@ -861,6 +928,7 @@ function diagnoseRefusalData() {
   console.log('\n📈 СТАТИСТИКА СТАТУСОВ (Колонка D):');
   Object.entries(statusStats)
     .sort(([,a], [,b]) => b - a)
+    .slice(0, 10)
     .forEach(([status, count]) => {
       const percentage = ((count / rows.length) * 100).toFixed(1);
       console.log(`• "${status}": ${count} (${percentage}%)`);
@@ -872,19 +940,28 @@ function diagnoseRefusalData() {
   if (refusedCount > 0) {
     console.log('✅ Данные для анализа найдены!');
     
-    // Проверяем наличие полей с комментариями
-    const commentFields = headers.filter((h, idx) => {
-      const normalized = String(h).toLowerCase();
-      return normalized.includes('комментарий') || 
-             normalized.includes('причина') ||
-             normalized.includes('примечания') ||
-             normalized.includes('отказ');
+    // Проверяем качество причин отказов для отказанных сделок
+    let refusedWithReasons = 0;
+    let refusedWithoutReasons = 0;
+    
+    rows.forEach(row => {
+      const status = String(row[3] || '').trim();
+      if (status === 'Закрыто и не реализовано') {
+        const reason = String(row[reasonColumnIndex] || '').trim();
+        if (reason && reason !== '' && reason.length > 5) {
+          refusedWithReasons++;
+        } else {
+          refusedWithoutReasons++;
+        }
+      }
     });
     
-    if (commentFields.length > 0) {
-      console.log(`💬 Поля с комментариями: ${commentFields.join(', ')}`);
-    } else {
-      console.log('⚠️ Отдельные поля с комментариями не найдены, будем использовать статус и другие текстовые данные');
+    console.log(`\n💬 КАЧЕСТВО ПРИЧИН ОТКАЗОВ:`);
+    console.log(`• С причинами: ${refusedWithReasons} (${((refusedWithReasons / refusedCount) * 100).toFixed(1)}%)`);
+    console.log(`• Без причин: ${refusedWithoutReasons} (${((refusedWithoutReasons / refusedCount) * 100).toFixed(1)}%)`);
+    
+    if (refusedWithReasons > 0) {
+      console.log(`\n🚀 ГОТОВО К АНАЛИЗУ: ${refusedWithReasons} сделок с причинами отказов`);
     }
   } else {
     console.log('❌ Отказанные сделки не найдены!');

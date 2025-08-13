@@ -195,7 +195,11 @@ const CONFIG = {
     ],
     
     // Колонка со статусом (D = индекс 3)
-    STATUS_COLUMN_INDEX: 3
+    STATUS_COLUMN_INDEX: 3,
+    
+    // Колонка с причинами отказов (X = индекс 23)
+    REFUSAL_REASON_COLUMN_INDEX: 23, // Столбец X: "Сделка.Причина отказа (ОБ)"
+    REFUSAL_REASON_COLUMN_NAME: 'Сделка.Причина отказа (ОБ)'
   },
 
   // ===== СРАВНИТЕЛЬНЫЙ АНАЛИЗ КАНАЛОВ =====
