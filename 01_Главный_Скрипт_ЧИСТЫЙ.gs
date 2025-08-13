@@ -829,18 +829,25 @@ function loadCalltrackingData_() {
  * СОЗДАНИЕ ОБЪЕДИНЕННОЙ СТРОКИ ДАННЫХ
  */
 function createMergedDealRow_(fullDeal, regularDeal, guestData = null) {
+  // Функция для безопасного приведения к строке (защита от null/undefined)
+  const safeString = (value) => {
+    if (value === null || value === undefined) return '';
+    return String(value);
+  };
+  
   // Функция для выбора значения: приоритет у fullDeal, но если пусто - берем из regularDeal
   const mergeValue = (fullValue, regularValue) => {
     if (isEmptyValue_(fullValue)) {
-      return regularValue || '';
+      return safeString(regularValue);
     }
-    return fullValue || '';
+    return safeString(fullValue);
   };
   
   // Функция для очистки названий от "ВСЕ БАРЫ СЕТИ /"
   const cleanName = (name) => {
-    if (!name) return '';
-    return String(name).replace(/^ВСЕ БАРЫ СЕТИ\s*\/\s*/, '');
+    const safeName = safeString(name);
+    if (!safeName) return '';
+    return safeName.replace(/^ВСЕ БАРЫ СЕТИ\s*\/\s*/, '');
   };
   
   const fullD = fullDeal || {};
@@ -1171,10 +1178,15 @@ function parseRussianDate_(dateStr) {
 }
 
 function normalizePhoneClean_(phone) {
-  if (!phone) return '';
+  // Защита от null, undefined и нестроковых значений
+  if (!phone || phone === null || phone === undefined) return '';
+  
+  // Приводим к строке безопасно
+  const phoneStr = String(phone);
+  if (!phoneStr.trim()) return '';
   
   // Убираем все нецифровые символы  
-  let clean = phone.toString().replace(/\D/g, '');
+  let clean = phoneStr.replace(/\D/g, '');
   
   // Если начинается с 8, заменяем на 7
   if (clean.startsWith('8') && clean.length === 11) {
@@ -1549,7 +1561,8 @@ function applySectionColoring_(sheet, totalCols) {
  */
 
 function formatDateClean_(date) {
-  if (!date) return '';
+  // Защита от null, undefined и пустых значений
+  if (!date || date === null || date === undefined) return '';
   
   try {
     let d;
@@ -1558,27 +1571,31 @@ function formatDateClean_(date) {
     if (date instanceof Date) {
       d = date;
     } else if (typeof date === 'string') {
+      const dateStr = String(date).trim();
+      if (!dateStr) return '';
+      
       // Если строка уже в формате ДД.ММ.ГГГГ, возвращаем как есть
       const datePattern = /^\d{2}\.\d{2}\.\d{4}$/;
-      if (datePattern.test(date)) {
-        return date;
+      if (datePattern.test(dateStr)) {
+        return dateStr;
       }
       
       // Если строка в формате ДД.ММ.ГГГГ ЧЧ:ММ:СС, извлекаем дату
       const dateTimePattern = /^(\d{2})\.(\d{2})\.(\d{4})\s+\d{2}:\d{2}:\d{2}$/;
-      const match = date.match(dateTimePattern);
+      const match = dateStr.match(dateTimePattern);
       if (match) {
         return `${match[1]}.${match[2]}.${match[3]}`;
       }
       
       // Пробуем распарсить строку как дату
-      d = new Date(date);
+      d = new Date(dateStr);
     } else if (typeof date === 'number') {
       // Если это timestamp
       d = new Date(date);
     } else {
       // Пробуем привести к строке и затем к дате
       const dateStr = String(date);
+      if (!dateStr.trim()) return '';
       
       // Проверяем паттерны даты/времени
       const dateTimePattern = /^(\d{2})\.(\d{2})\.(\d{4})\s+\d{2}:\d{2}:\d{2}$/;
@@ -1794,7 +1811,11 @@ function clearDataValidation_(sheet) {
 }
 
 function normalizeStatusForValidation_(status) {
-  if (!status || typeof status !== 'string') return '';
+  // Защита от null, undefined и нестроковых значений
+  if (!status || status === null || status === undefined) return '';
+  
+  const statusStr = String(status).trim();
+  if (!statusStr) return '';
   
   // Маппинг статусов для соответствия правилам валидации
   const statusMapping = {
@@ -1830,12 +1851,12 @@ function normalizeStatusForValidation_(status) {
   };
   
   // Точное совпадение
-  if (statusMapping[status]) {
-    return statusMapping[status];
+  if (statusMapping[statusStr]) {
+    return statusMapping[statusStr];
   }
   
   // Поиск по частичному совпадению (без учета регистра)
-  const lowerStatus = status.toLowerCase();
+  const lowerStatus = statusStr.toLowerCase();
   for (const [key, value] of Object.entries(statusMapping)) {
     if (key.toLowerCase() === lowerStatus) {
       return value;
@@ -1843,8 +1864,8 @@ function normalizeStatusForValidation_(status) {
   }
   
   // Если статус не найден, возвращаем как есть, но предупреждаем
-  console.warn(`⚠️ Неизвестный статус: "${status}"`);
-  return status;
+  console.warn(`⚠️ Неизвестный статус: "${statusStr}"`);
+  return statusStr;
 }
 
 function repairWorkingAmoSheet() {
