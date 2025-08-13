@@ -458,35 +458,76 @@ function applyDataStyle_(range) {
 
 /**
  * Применяет красивое оформление для листа "РАБОЧИЙ АМО" с группировкой по блокам
+ * Оптимизированная версия для больших данных
  * @param {Sheet} sheet - Лист для оформления
  * @param {Array} header - Заголовки столбцов
  * @param {number} dataRows - Количество строк данных
  */
 function applyWorkingAmoBeautifulStyle_(sheet, header, dataRows) {
   try {
-    if (!sheet || !header || header.length === 0 || dataRows === 0) return;
+    if (!sheet || !header || header.length === 0) return;
     
-    logInfo_('STYLE', 'Применение красивого оформления к РАБОЧИЙ АМО');
+    logInfo_('STYLE', `Применение оптимизированного оформления к РАБОЧИЙ АМО (${header.length} столбцов, ${dataRows} строк)`);
     
-    // Определяем блоки столбцов для группировки
+    // Ограничиваем обработку для очень больших данных
+    const maxRowsForFullStyling = 500;
+    const shouldApplyFullStyling = dataRows <= maxRowsForFullStyling;
+    
+    // 1. Определяем блоки столбцов для группировки
     const columnGroups = getWorkingAmoColumnGroups_(header);
     
-    // 1. Стилизация заголовков с группировкой
+    // 2. Стилизация заголовков с группировкой (всегда применяем)
     styleWorkingAmoHeaders_(sheet, header, columnGroups);
     
-    // 2. Стилизация данных с чередующимися цветами
-    styleWorkingAmoData_(sheet, header.length, dataRows, columnGroups);
+    // 3. Стилизация данных (только для небольших данных или упрощенная версия)
+    if (shouldApplyFullStyling && dataRows > 0) {
+      styleWorkingAmoData_(sheet, header.length, dataRows, columnGroups);
+    } else if (dataRows > 0) {
+      // Упрощенная стилизация для больших данных
+      styleWorkingAmoDataSimple_(sheet, header.length, dataRows);
+    }
     
-    // 3. Установка оптимальной ширины столбцов
+    // 4. Установка ширины столбцов (защищенная от таймаутов)
     autoResizeWorkingAmoColumns_(sheet, header);
     
-    // 4. Замораживание первой строки
-    sheet.setFrozenRows(1);
+    // 5. Замораживание первой строки
+    try {
+      sheet.setFrozenRows(1);
+    } catch (freezeError) {
+      logWarning_('STYLE', 'Не удалось заморозить строку', freezeError);
+    }
     
-    logInfo_('STYLE', `Красивое оформление применено к ${header.length} столбцам и ${dataRows} строкам`);
+    logInfo_('STYLE', `Оформление применено (режим: ${shouldApplyFullStyling ? 'полный' : 'упрощенный'})`);
     
   } catch (error) {
     logError_('STYLE', 'Ошибка применения красивого оформления', error);
+  }
+}
+
+/**
+ * Упрощенная стилизация данных для больших объемов
+ * @param {Sheet} sheet - Лист
+ * @param {number} numColumns - Количество столбцов
+ * @param {number} numRows - Количество строк данных
+ * @private
+ */
+function styleWorkingAmoDataSimple_(sheet, numColumns, numRows) {
+  try {
+    if (numRows === 0) return;
+    
+    // Применяем базовый стиль только к первым 100 строкам
+    const maxStyledRows = Math.min(numRows, 100);
+    const dataRange = sheet.getRange(2, 1, maxStyledRows, numColumns);
+    
+    dataRange
+      .setFontSize(10)
+      .setFontFamily('Arial')
+      .setVerticalAlignment('middle');
+    
+    logInfo_('STYLE', `Применена упрощенная стилизация к ${maxStyledRows} строкам из ${numRows}`);
+    
+  } catch (error) {
+    logWarning_('STYLE', 'Ошибка упрощенной стилизации', error);
   }
 }
 
@@ -675,27 +716,68 @@ function styleWorkingAmoData_(sheet, numColumns, numRows, groups) {
 }
 
 /**
- * Устанавливает оптимальную ширину столбцов
+ * Устанавливает оптимальную ширину столбцов (защищенная от таймаутов версия)
  * @param {Sheet} sheet - Лист
  * @param {Array} header - Заголовки столбцов
  * @private
  */
 function autoResizeWorkingAmoColumns_(sheet, header) {
   try {
-    // Автоматически подгоняем ширину всех столбцов
-    sheet.autoResizeColumns(1, header.length);
+    // Устанавливаем фиксированные ширины для предотвращения таймаутов
+    const columnWidths = {
+      'ID': 100,
+      'Название': 200,
+      'Имя': 120,
+      'Телефон': 130,
+      'Email': 180,
+      'Статус': 150,
+      'Этап': 120,
+      'Pipeline': 120,
+      'Дата': 110,
+      'TIME': 80,
+      'UTM': 120,
+      'Источник': 130,
+      'Канал': 120,
+      'Res.': 90,
+      'Gue.': 90,
+      'Сумма': 100,
+      'Визиты': 80,
+      'Время': 90
+    };
     
-    // Устанавливаем минимальную и максимальную ширину для читабельности
-    for (let col = 1; col <= header.length; col++) {
-      const currentWidth = sheet.getColumnWidth(col);
+    // Устанавливаем ширину по частям, чтобы избежать таймаутов
+    const batchSize = 10; // Обрабатываем по 10 столбцов за раз
+    
+    for (let startCol = 1; startCol <= header.length; startCol += batchSize) {
+      const endCol = Math.min(startCol + batchSize - 1, header.length);
       
-      // Минимальная ширина 80px, максимальная 300px
-      if (currentWidth < 80) {
-        sheet.setColumnWidth(col, 80);
-      } else if (currentWidth > 300) {
-        sheet.setColumnWidth(col, 300);
+      try {
+        for (let col = startCol; col <= endCol; col++) {
+          const headerName = String(header[col - 1] || '');
+          let width = 100; // Базовая ширина
+          
+          // Определяем ширину по содержанию заголовка
+          for (const [key, value] of Object.entries(columnWidths)) {
+            if (headerName.toLowerCase().includes(key.toLowerCase())) {
+              width = value;
+              break;
+            }
+          }
+          
+          sheet.setColumnWidth(col, width);
+        }
+        
+        // Небольшая задержка между батчами
+        if (endCol < header.length) {
+          Utilities.sleep(100);
+        }
+        
+      } catch (batchError) {
+        logWarning_('STYLE', `Ошибка обработки столбцов ${startCol}-${endCol}`, batchError);
       }
     }
+    
+    logInfo_('STYLE', `Установлена ширина для ${header.length} столбцов`);
     
   } catch (error) {
     logWarning_('STYLE', 'Ошибка изменения размера столбцов', error);

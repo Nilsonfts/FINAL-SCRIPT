@@ -55,45 +55,100 @@ function analyzeRefusalReasons() {
  * @private
  */
 function getRefusedDealsData_() {
-  const rawSheet = getSheet_(CONFIG.SHEETS.RAW_DATA);
-  if (!rawSheet) {
-    throw new Error('Лист с сырыми данными не найден');
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const workingSheet = spreadsheet.getSheetByName('РАБОЧИЙ АМО');
+  
+  if (!workingSheet) {
+    throw new Error('Лист "РАБОЧИЙ АМО" не найден');
   }
   
-  const rawData = getSheetData_(rawSheet);
+  const rawData = getSheetData_(workingSheet);
   if (rawData.length <= 1) return [];
   
   const headers = rawData[0];
   const rows = rawData.slice(1);
   
-  // Фильтруем только отклонённые сделки
+  logInfo_('REFUSAL_ANALYSIS', `Анализируем ${rows.length} записей для поиска отказов`);
+  
+  // Фильтруем отклонённые сделки по различным статусам
   const refusedDeals = rows.filter(row => {
-    const statusIndex = findHeaderIndex_(headers, 'Статус');
-    return statusIndex >= 0 && row[statusIndex] === 'failure';
+    const statusIndex = findColumnIndex(headers, ['Статус', 'Status', 'Сделка.Статус']);
+    if (statusIndex < 0) return false;
+    
+    const status = String(row[statusIndex] || '').toLowerCase().trim();
+    
+    // Расширенный список статусов отказа
+    const refusedStatuses = [
+      'закрыто и не реализовано',
+      'отклонена',
+      'отказ',
+      'failure',
+      'rejected',
+      'closed',
+      'не реализовано',
+      'отклонено',
+      'неуспешно реализовано',
+      'провал'
+    ];
+    
+    return refusedStatuses.some(refusedStatus => status.includes(refusedStatus));
   });
   
+  logInfo_('REFUSAL_ANALYSIS', `Найдено ${refusedDeals.length} отказанных сделок`);
+  
+  if (refusedDeals.length === 0) {
+    // Выводим статистику статусов для диагностики
+    const statusStats = {};
+    rows.forEach(row => {
+      const statusIndex = findColumnIndex(headers, ['Статус', 'Status', 'Сделка.Статус']);
+      if (statusIndex >= 0) {
+        const status = String(row[statusIndex] || 'Не указан');
+        statusStats[status] = (statusStats[status] || 0) + 1;
+      }
+    });
+    
+    logInfo_('REFUSAL_ANALYSIS', 'Статистика статусов:', statusStats);
+    return [];
+  }
+  
   // Формируем структурированные данные
-  return refusedDeals.map(row => {
-    const dealId = row[findHeaderIndex_(headers, 'ID сделки')] || '';
-    const dealName = row[findHeaderIndex_(headers, 'Название')] || '';
-    const channel = row[findHeaderIndex_(headers, 'Канал')] || 'Неизвестно';
-    const createdDate = parseDate_(row[findHeaderIndex_(headers, 'Дата создания')]);
-    const budget = parseFloat(row[findHeaderIndex_(headers, 'Бюджет')]) || 0;
-    const manager = row[findHeaderIndex_(headers, 'Ответственный')] || 'Неназначен';
+  return refusedDeals.map((row, index) => {
+    const dealIdIndex = findColumnIndex(headers, ['ID', 'Сделка.ID', 'Deal ID']);
+    const dealNameIndex = findColumnIndex(headers, ['Название', 'Сделка.Название', 'Deal Name']);
+    const channelIndex = findColumnIndex(headers, ['Канал', 'Channel', 'Источник']);
+    const createdDateIndex = findColumnIndex(headers, ['Дата создания', 'Created Date', 'Date']);
+    const budgetIndex = findColumnIndex(headers, ['Бюджет', 'Budget', 'Сумма']);
+    const managerIndex = findColumnIndex(headers, ['Ответственный', 'Manager', 'Менеджер']);
+    const statusIndex = findColumnIndex(headers, ['Статус', 'Status', 'Сделка.Статус']);
     
-    // Пытаемся извлечь комментарий о причине отказа
-    const refusalReasonIndex = findHeaderIndex_(headers, 'Причина отказа');
-    const commentIndex = findHeaderIndex_(headers, 'Комментарий');
-    const notesIndex = findHeaderIndex_(headers, 'Примечания');
-    
+    // Ищем комментарии в различных полях
+    const commentFields = ['Причина отказа', 'Комментарий', 'Примечания', 'Notes', 'Comment'];
     let refusalComment = '';
-    if (refusalReasonIndex >= 0 && row[refusalReasonIndex]) {
-      refusalComment = row[refusalReasonIndex];
-    } else if (commentIndex >= 0 && row[commentIndex]) {
-      refusalComment = row[commentIndex];
-    } else if (notesIndex >= 0 && row[notesIndex]) {
-      refusalComment = row[notesIndex];
+    
+    for (const field of commentFields) {
+      const fieldIndex = findColumnIndex(headers, [field]);
+      if (fieldIndex >= 0 && row[fieldIndex]) {
+        refusalComment = String(row[fieldIndex]);
+        break;
+      }
     }
+    
+    // Если комментария нет, используем статус как причину
+    if (!refusalComment) {
+      refusalComment = String(row[statusIndex] || 'Причина не указана');
+    }
+    
+    const dealId = dealIdIndex >= 0 ? String(row[dealIdIndex] || '') : `deal_${index}`;
+    const dealName = dealNameIndex >= 0 ? String(row[dealNameIndex] || '') : 'Без названия';
+    const channel = channelIndex >= 0 ? String(row[channelIndex] || 'Неизвестно') : 'Неизвестно';
+    const createdDate = createdDateIndex >= 0 ? parseDate_(row[createdDateIndex]) : new Date();
+    const budget = budgetIndex >= 0 ? (parseFloat(row[budgetIndex]) || 0) : 0;
+    const manager = managerIndex >= 0 ? String(row[managerIndex] || 'Неназначен') : 'Неназначен';
+    const status = statusIndex >= 0 ? String(row[statusIndex] || 'Неизвестно') : 'Неизвестно';
+    
+    // Ищем UTM данные
+    const utmSourceIndex = findColumnIndex(headers, ['UTM Source', 'utm_source', 'Источник UTM']);
+    const utmCampaignIndex = findColumnIndex(headers, ['UTM Campaign', 'utm_campaign', 'Кампания UTM']);
     
     return {
       dealId: dealId,
@@ -102,11 +157,13 @@ function getRefusedDealsData_() {
       createdDate: createdDate,
       budget: budget,
       manager: manager,
+      status: status,
       refusalComment: refusalComment,
-      utmSource: row[findHeaderIndex_(headers, 'UTM Source')] || '',
-      utmCampaign: row[findHeaderIndex_(headers, 'UTM Campaign')] || ''
+      utmSource: utmSourceIndex >= 0 ? String(row[utmSourceIndex] || '') : '',
+      utmCampaign: utmCampaignIndex >= 0 ? String(row[utmCampaignIndex] || '') : ''
     };
   }).filter(deal => deal.refusalComment && deal.refusalComment.trim().length > 0);
+}
 }
 
 /**
@@ -600,16 +657,38 @@ function addRefusalAnalysisCharts_(sheet, analysisResults) {
  * @private
  */
 function createEmptyRefusalReport_() {
-  const sheet = getOrCreateSheet_(CONFIG.SHEETS.REFUSAL_ANALYSIS);
-  clearSheetData_(sheet);
-  applySheetFormatting_(sheet, 'Анализ причин отказов');
-  
-  sheet.getRange('A3').setValue('ℹ️ Нет данных об отклонённых сделках для анализа');
-  sheet.getRange('A3').setFontSize(14).setFontWeight('bold');
-  sheet.getRange('A5').setValue('Убедитесь, что:');
-  sheet.getRange('A6').setValue('• В AmoCRM есть сделки со статусом "Отклонена"');
-  sheet.getRange('A7').setValue('• У отклонённых сделок заполнены причины отказа в комментариях');
-  sheet.getRange('A8').setValue('• Выполнена синхронизация данных из AmoCRM');
-  
-  updateLastUpdateTime_(CONFIG.SHEETS.REFUSAL_ANALYSIS);
+  try {
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = getOrCreateSheet_('Анализ отказов');
+    sheet.clear();
+    
+    // Заголовок
+    sheet.getRange('A1').setValue('📊 АНАЛИЗ ПРИЧИН ОТКАЗОВ');
+    applyHeaderStyle_(sheet.getRange('A1'));
+    sheet.getRange('A1').merge(sheet.getRange('A1:D1'));
+    
+    // Время обновления
+    sheet.getRange('A2').setValue(`⏰ Последнее обновление: ${getCurrentDateMoscow_().toLocaleString()}`);
+    
+    // Основное сообщение
+    sheet.getRange('A3').setValue('ℹ️ Нет данных об отклонённых сделках для анализа');
+    applySubheaderStyle_(sheet.getRange('A3'));
+    
+    sheet.getRange('A5').setValue('🔍 Убедитесь, что:');
+    sheet.getRange('A6').setValue('• В AmoCRM есть сделки со статусом "Закрыто и не реализовано"');
+    sheet.getRange('A7').setValue('• У отклонённых сделок заполнены причины отказа в комментариях');
+    sheet.getRange('A8').setValue('• Выполнена синхронизация данных из AmoCRM');
+    
+    // Список поддерживаемых статусов отказов
+    sheet.getRange('A10').setValue('📋 Распознаваемые статусы отказов:');
+    sheet.getRange('A11').setValue('• "Закрыто и не реализовано"');
+    sheet.getRange('A12').setValue('• "Отклонена", "Отказ"');
+    sheet.getRange('A13').setValue('• "Не реализовано", "Отклонено"');
+    sheet.getRange('A14').setValue('• "Неуспешно реализовано"');
+    
+    logInfo_('REFUSAL_ANALYSIS', 'Создан пустой отчёт анализа отказов');
+    
+  } catch (error) {
+    logError_('REFUSAL_ANALYSIS', 'Ошибка создания пустого отчёта', error);
+  }
 }
