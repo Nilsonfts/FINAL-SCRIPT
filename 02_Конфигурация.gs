@@ -3,6 +3,33 @@
  * Основные настройки, константы и маппинги
  */
 
+// 🔑 API ТОКЕНЫ И ДОСТУПЫ (ЗАПОЛНИТЕ СВОИМИ ДАННЫМИ!)
+const API_TOKENS = {
+  // Яндекс.Метрика - https://oauth.yandex.ru/authorize?response_type=token&client_id=c2a8f5c2abeb4b9288df8b3fb6b3c9a2
+  YANDEX_METRIKA_TOKEN: 'ВСТАВЬТЕ_СЮДА_ВАШ_ТОКЕН_МЕТРИКИ',
+  YANDEX_METRIKA_COUNTER_ID: 'ВСТАВЬТЕ_СЮДА_ID_СЧЕТЧИКА', // например: '12345678'
+  
+  // Яндекс.Директ - https://oauth.yandex.ru/authorize?response_type=token&client_id=ce780928adc04f78b79c0ac932eb5c8e  
+  YANDEX_DIRECT_TOKEN: 'ВСТАВЬТЕ_СЮДА_ВАШ_ТОКЕН_ДИРЕКТА',
+  
+  // AMO CRM
+  AMO_SUBDOMAIN: 'ВСТАВЬТЕ_ПОДДОМЕН',  // например: 'mycompany' (без .amocrm.ru)
+  AMO_ACCESS_TOKEN: 'ВСТАВЬТЕ_ТОКЕН_AMO',
+  AMO_CLIENT_ID: 'ВСТАВЬТЕ_CLIENT_ID_AMO',
+  AMO_CLIENT_SECRET: 'ВСТАВЬТЕ_CLIENT_SECRET_AMO',
+  AMO_REDIRECT_URI: 'ВСТАВЬТЕ_REDIRECT_URI_AMO',
+  
+  // Call-tracking системы
+  MANGO_API_KEY: 'ВСТАВЬТЕ_КЛЮЧ_МАНГО',
+  MANGO_API_SALT: 'ВСТАВЬТЕ_СОЛЬ_МАНГО',
+  COMAGIC_TOKEN: 'ВСТАВЬТЕ_ТОКЕН_КОМАДЖИК',
+  
+  // Дополнительные интеграции
+  GOOGLE_ANALYTICS_VIEW_ID: 'ВСТАВЬТЕ_VIEW_ID_GA',
+  FACEBOOK_ACCESS_TOKEN: 'ВСТАВЬТЕ_ТОКЕН_FACEBOOK',
+  VK_ACCESS_TOKEN: 'ВСТАВЬТЕ_ТОКЕН_VK'
+};
+
 // Основная конфигурация системы
 const CONFIG = {
   // Названия листов в Google Sheets
@@ -343,10 +370,70 @@ function validateConfiguration() {
   return true;
 }
 
+function validateApiTokens() {
+  const warnings = [];
+  
+  // Проверяем токены API
+  if (!API_TOKENS.YANDEX_METRIKA_TOKEN || API_TOKENS.YANDEX_METRIKA_TOKEN.startsWith('ВСТАВЬТЕ')) {
+    warnings.push('🟡 Не настроен токен Яндекс.Метрики');
+  }
+  
+  if (!API_TOKENS.YANDEX_METRIKA_COUNTER_ID || API_TOKENS.YANDEX_METRIKA_COUNTER_ID.startsWith('ВСТАВЬТЕ')) {
+    warnings.push('🟡 Не настроен ID счетчика Яндекс.Метрики');
+  }
+  
+  if (!API_TOKENS.YANDEX_DIRECT_TOKEN || API_TOKENS.YANDEX_DIRECT_TOKEN.startsWith('ВСТАВЬТЕ')) {
+    warnings.push('🟡 Не настроен токен Яндекс.Директ');
+  }
+  
+  if (!API_TOKENS.AMO_ACCESS_TOKEN || API_TOKENS.AMO_ACCESS_TOKEN.startsWith('ВСТАВЬТЕ')) {
+    warnings.push('🟡 Не настроен токен AMO CRM');
+  }
+  
+  if (!API_TOKENS.AMO_SUBDOMAIN || API_TOKENS.AMO_SUBDOMAIN.startsWith('ВСТАВЬТЕ')) {
+    warnings.push('🟡 Не настроен поддомен AMO CRM');
+  }
+  
+  if (warnings.length > 0) {
+    console.warn('⚠️ Предупреждения по токенам API:');
+    warnings.forEach(warning => console.warn(warning));
+    console.warn('📖 См. инструкцию в README.md для настройки токенов');
+    return false;
+  }
+  
+  console.log('✅ Все API токены настроены');
+  return true;
+}
+
+function getApiTokensStatus() {
+  const status = {
+    yandexMetrika: !!(API_TOKENS.YANDEX_METRIKA_TOKEN && !API_TOKENS.YANDEX_METRIKA_TOKEN.startsWith('ВСТАВЬТЕ')),
+    yandexDirect: !!(API_TOKENS.YANDEX_DIRECT_TOKEN && !API_TOKENS.YANDEX_DIRECT_TOKEN.startsWith('ВСТАВЬТЕ')),
+    amoCrm: !!(API_TOKENS.AMO_ACCESS_TOKEN && !API_TOKENS.AMO_ACCESS_TOKEN.startsWith('ВСТАВЬТЕ')),
+    callTracking: !!(API_TOKENS.MANGO_API_KEY && !API_TOKENS.MANGO_API_KEY.startsWith('ВСТАВЬТЕ'))
+  };
+  
+  const configuredCount = Object.values(status).filter(Boolean).length;
+  const totalCount = Object.keys(status).length;
+  
+  return {
+    ...status,
+    configuredCount,
+    totalCount,
+    percentage: Math.round(configuredCount / totalCount * 100)
+  };
+}
+
 // Автоматическая валидация при загрузке
 try {
   validateConfiguration();
+  const tokenStatus = validateApiTokens();
   console.log('🔧 Конфигурация AMO Analytics загружена успешно');
+  
+  if (!tokenStatus) {
+    console.log('💡 Для полной функциональности настройте API токены в начале файла 02_Конфигурация.gs');
+    console.log('📖 Подробная инструкция в README.md');
+  }
 } catch (error) {
   console.error('❌ Ошибка при загрузке конфигурации:', error);
 }
