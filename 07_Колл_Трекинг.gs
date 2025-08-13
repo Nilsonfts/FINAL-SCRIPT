@@ -28,7 +28,12 @@ function runCallTrackingAnalysis() {
 }
 
 function getCallTrackingData() {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.CALL_TRACKING);
+  // Сначала ищем стандартный лист, потом пользовательский
+  let sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.CALL_TRACKING);
+  if (!sheet) {
+    sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('КоллТрекинг');
+  }
+  
   if (!sheet) {
     console.log('Лист КоллТрекинг не найден, анализируем только АМО данные');
     return [];
@@ -153,11 +158,33 @@ function analyzeCallTracking(amoData, callData) {
   });
   
   // Обработка call-tracking данных (если есть)
+  const trackingNumbers = {};
   if (callData && callData.length > 0) {
-    // Предполагаем стандартную структуру колл-трекинга
     callData.forEach(row => {
-      // Добавляем дополнительную логику для внешних звонков
-      answeredCalls++;
+      const phone = row[0] || '';           // A - Телефон
+      const code = row[1] || '';            // B - Код источника
+      const description = row[2] || '';     // C - Описание
+      
+      if (phone && code) {
+        trackingNumbers[phone] = {
+          phone: phone,
+          code: code,
+          description: description,
+          source: mapTrackingSource(code),
+          calls: 0,
+          amoMatches: 0
+        };
+        
+        // Ищем соответствия в АМО данных
+        amoData.forEach(amoRow => {
+          const amoPhone = normalizePhone(amoRow[CONFIG.WORKING_AMO_COLUMNS.PHONE] || '');
+          const normalizedTracking = normalizePhone(phone);
+          
+          if (amoPhone && normalizedTracking && amoPhone === normalizedTracking) {
+            trackingNumbers[phone].amoMatches++;
+          }
+        });
+      }
     });
   }
   
@@ -191,6 +218,7 @@ function analyzeCallTracking(amoData, callData) {
     successfulCalls,
     phoneAnalysis: processedPhones,
     mangoAnalysis: processedMango,
+    trackingNumbers: Object.values(trackingNumbers),
     timeAnalysis,
     qualityAnalysis: processedQuality,
     metrics: {
@@ -220,6 +248,12 @@ function createCallTrackingReport(analysis) {
   // Анализ телефонов
   currentRow = addPhoneAnalysis(sheet, analysis.phoneAnalysis, currentRow);
   currentRow += 2;
+  
+  // Трекинг-номера (если есть)
+  if (analysis.trackingNumbers && analysis.trackingNumbers.length > 0) {
+    currentRow = addTrackingNumbersAnalysis(sheet, analysis.trackingNumbers, currentRow);
+    currentRow += 2;
+  }
   
   // Анализ Mango линий
   currentRow = addMangoAnalysis(sheet, analysis.mangoAnalysis, currentRow);
@@ -298,6 +332,47 @@ function addPhoneAnalysis(sheet, phoneAnalysis, startRow) {
   }
   
   return startRow + Math.max(phoneData.length, 1) + 1;
+}
+
+function addTrackingNumbersAnalysis(sheet, trackingNumbers, startRow) {
+  const headers = [
+    'Трекинг-номер',
+    'Код источника', 
+    'Описание',
+    'Источник',
+    'Совпадений в АМО'
+  ];
+  
+  const headerRange = sheet.getRange(startRow, 1, 1, headers.length);
+  headerRange.setValues([headers]);
+  headerRange.setBackground('#6d4c41')
+            .setFontColor('#ffffff')
+            .setFontWeight('bold')
+            .setFontFamily(CONFIG.DEFAULT_FONT);
+  
+  const trackingData = trackingNumbers.map(tracking => [
+    tracking.phone,
+    tracking.code,
+    tracking.description,
+    tracking.source,
+    tracking.amoMatches
+  ]);
+  
+  if (trackingData.length > 0) {
+    const dataRange = sheet.getRange(startRow + 1, 1, trackingData.length, headers.length);
+    dataRange.setValues(trackingData);
+    dataRange.setFontFamily(CONFIG.DEFAULT_FONT);
+    
+    // Выделяем номера с совпадениями
+    for (let i = 0; i < trackingData.length; i++) {
+      if (trackingData[i][4] > 0) {
+        sheet.getRange(startRow + 1 + i, 1, 1, headers.length)
+             .setBackground('#e8f5e8');
+      }
+    }
+  }
+  
+  return startRow + Math.max(trackingData.length, 1) + 1;
 }
 
 function addMangoAnalysis(sheet, mangoAnalysis, startRow) {
@@ -420,4 +495,19 @@ function addTimeCallAnalysis(sheet, timeAnalysis, startRow) {
   sheet.autoResizeColumns(1, headers.length);
   
   return startRow + timeData.length + 1;
+}
+
+/**
+ * МАППИНГ КОДОВ ТРЕКИНГ-НОМЕРОВ В ИСТОЧНИКИ
+ */
+function mapTrackingSource(code) {
+  const mapping = {
+    'osn_tel': 'Основной сайт',
+    'ya_tel': 'Яндекс Карты', 
+    'rclub_tel': 'Рестоклаб',
+    '2gis_tel': '2ГИС',
+    'smm_tel': 'Соцсети + Google'
+  };
+  
+  return mapping[code] || code || 'Неопределенный источник';
 }
