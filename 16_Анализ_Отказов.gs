@@ -596,7 +596,6 @@ function addRefusalAnalysisCharts_(sheet, analysisResults) {
       logWarning_('CHARTS', 'Ошибка создания диаграммы категорий', chartError);
     }
   }
-  }
   
   // 2. Столбчатая диаграмма отказов по каналам
   if (Object.keys(analysisResults.channelAnalysis).length > 0) {
@@ -621,7 +620,6 @@ function addRefusalAnalysisCharts_(sheet, analysisResults) {
       logWarning_('CHARTS', 'Ошибка создания диаграммы каналов', chartError);
     }
   }
-  }
   
   // 3. Линейная диаграмма трендов по месяцам
   if (analysisResults.monthlyTrends.length > 0) {
@@ -642,7 +640,6 @@ function addRefusalAnalysisCharts_(sheet, analysisResults) {
     } catch (chartError) {
       logWarning_('CHARTS', 'Ошибка создания диаграммы трендов', chartError);
     }
-  }
   }
 }
 
