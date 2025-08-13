@@ -28,14 +28,17 @@ function runCallTrackingAnalysis() {
 }
 
 function getCallTrackingData() {
-  // Сначала ищем стандартный лист, потом пользовательский
-  let sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.CALL_TRACKING);
+  // Сначала ищем пользовательский лист, потом стандартный
+  let sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('КОЛЛ-ТРЕКИНГ');
   if (!sheet) {
     sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('КоллТрекинг');
   }
+  if (!sheet) {
+    sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.CALL_TRACKING);
+  }
   
   if (!sheet) {
-    console.log('Лист КоллТрекинг не найден, анализируем только АМО данные');
+    console.log('Лист колл-трекинга не найден, анализируем только АМО данные');
     return [];
   }
   
@@ -502,11 +505,11 @@ function addTimeCallAnalysis(sheet, timeAnalysis, startRow) {
  */
 function mapTrackingSource(code) {
   const mapping = {
-    'osn_tel': 'Основной сайт',
+    'osn_tel': 'Основной',
     'ya_tel': 'Яндекс Карты', 
     'rclub_tel': 'Рестоклаб',
     '2gis_tel': '2ГИС',
-    'smm_tel': 'Соцсети + Google'
+    'smm_tel': 'Соц сети + Гугл'
   };
   
   return mapping[code] || code || 'Неопределенный источник';
