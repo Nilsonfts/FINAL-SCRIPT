@@ -270,8 +270,8 @@ function determineFunnelStage(formName, buttonText, status) {
 function determineAttribution(source, medium) {
   if (!source) return 'Прямой заход';
   
-  const sourceLower = source.toLowerCase();
-  const mediumLower = (medium || '').toLowerCase();
+  const sourceLower = (source || '').toString().toLowerCase();
+  const mediumLower = (medium || '').toString().toLowerCase();
   
   if (mediumLower.includes('cpc') || mediumLower.includes('ppc')) {
     return 'Платный поиск';

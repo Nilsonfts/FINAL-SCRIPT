@@ -18,7 +18,7 @@ function runCallTrackingAnalysis() {
     const analysis = analyzeCallTracking(amoData, callData);
     const sheet = createCallTrackingReport(analysis);
     
-    console.log(`Создан отчет на листе "${CONFIG.SHEETS.CTI_ANALYSIS}"`);
+    console.log(`Создан отчет на листе "${CONFIG.SHEETS.CALL_TRACKING}"`);
     console.log(`Проанализировано звонков: ${analysis.totalCalls}`);
     
   } catch (error) {
@@ -209,7 +209,7 @@ function getTopSource(sources) {
 }
 
 function createCallTrackingReport(analysis) {
-  const sheet = createOrUpdateSheet(CONFIG.SHEETS.CTI_ANALYSIS);
+  const sheet = createOrUpdateSheet(CONFIG.SHEETS.CALL_TRACKING);
   
   let currentRow = 1;
   

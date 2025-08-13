@@ -217,8 +217,8 @@ function analyzeYandexDirect(data) {
 }
 
 function isYandexDirectTraffic(source, medium) {
-  const sourceLower = source.toLowerCase();
-  const mediumLower = medium.toLowerCase();
+  const sourceLower = (source || '').toString().toLowerCase();
+  const mediumLower = (medium || '').toString().toLowerCase();
   
   return (sourceLower.includes('yandex') || sourceLower.includes('direct')) &&
          (mediumLower.includes('cpc') || mediumLower.includes('ppc') || mediumLower === '');

@@ -237,8 +237,8 @@ function determineTrafficType(source, medium, referer) {
     return 'Прямые заходы';
   }
   
-  const sourceLower = source.toLowerCase();
-  const mediumLower = (medium || '').toLowerCase();
+  const sourceLower = (source || '').toString().toLowerCase();
+  const mediumLower = (medium || '').toString().toLowerCase();
   
   if (mediumLower.includes('organic')) return 'Органический поиск';
   if (mediumLower.includes('cpc') || mediumLower.includes('ppc')) return 'Контекстная реклама';

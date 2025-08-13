@@ -16,7 +16,7 @@ function runRefusalsAiAnalysis() {
     const analysis = analyzeRefusalsWithAI(data);
     const sheet = createRefusalsAiReport(analysis);
     
-    console.log(`Создан отчет на листе "${CONFIG.SHEETS.REFUSALS_AI}"`);
+    console.log(`Создан отчет на листе "${CONFIG.SHEETS.REFUSAL_REASONS}"`);
     console.log(`Проанализировано отказов: ${analysis.totalRefusals}`);
     
   } catch (error) {
@@ -304,7 +304,7 @@ function generateRefusalInsights(reasons, categories, sources) {
 }
 
 function createRefusalsAiReport(analysis) {
-  const sheet = createOrUpdateSheet(CONFIG.SHEETS.REFUSALS_AI);
+  const sheet = createOrUpdateSheet(CONFIG.SHEETS.REFUSAL_REASONS);
   
   let currentRow = 1;
   
