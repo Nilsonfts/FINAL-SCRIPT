@@ -29,7 +29,9 @@ function analyzeRefusalReasons() {
     // Создаём отчёт
     const sheet = getOrCreateSheet_(CONFIG.SHEETS.REFUSAL_ANALYSIS);
     clearSheetData_(sheet);
-    applySheetFormatting_(sheet, 'Анализ причин отказов');
+    
+    // Применяем КРАСИВОЕ оформление как в старых отчетах
+    applyRefusalAnalysisBeautifulStyle_(sheet);
     
     // Строим структуру отчёта
     createRefusalAnalysisStructure_(sheet, analysisResults);
@@ -265,7 +267,7 @@ function analyzeRefusalReasonsWithGPT_(refusedDeals) {
   let recommendations = [];
   let successfulBatches = 0;
   let requestCount = 0;
-  const startTime = new Date();
+  let batchStartTime = new Date();
   
   // Анализируем каждый батч с умным rate limiting
   for (let i = 0; i < processBatches.length; i++) {
@@ -274,14 +276,14 @@ function analyzeRefusalReasonsWithGPT_(refusedDeals) {
     try {
       // Умная пауза для соблюдения лимита 3 RPM
       if (requestCount >= 3) {
-        const elapsedMinutes = (new Date() - startTime) / 60000;
+        const elapsedMinutes = (new Date() - batchStartTime) / 60000;
         if (elapsedMinutes < 1) {
           const waitTime = Math.ceil((1 - elapsedMinutes) * 60);
           logInfo_('GPT_ANALYSIS', `Пауза ${waitTime} секунд для соблюдения лимита 3 RPM`);
           Utilities.sleep(waitTime * 1000);
         }
         requestCount = 0;
-        startTime = new Date();
+        batchStartTime = new Date();
       }
       
       const batchResults = analyzeRefusalBatch_(apiKey, processBatches[i], refusedDeals);
@@ -637,197 +639,214 @@ function analyzeRefusalTrends_(refusedDeals) {
 
 /**
  * Создаёт структуру отчёта по анализу причин отказов
+ * Обновленная версия для красивого оформления
  * @param {Sheet} sheet - Лист таблицы
  * @param {Object} analysisResults - Результаты анализа
  * @private
  */
 function createRefusalAnalysisStructure_(sheet, analysisResults) {
-  let currentRow = 3;
-  
-  // 1. Общая статистика
-  sheet.getRange('A3:B3').merge();
-  sheet.getRange('A3').setValue('🔍 ОБЩАЯ СТАТИСТИКА ОТКАЗОВ');
-  applyHeaderStyle_(sheet.getRange('A3:B3'));
-  currentRow += 2;
-  
-  const generalStats = [
-    ['Всего отказов:', analysisResults.totalRefusals],
-    ['Категорий причин:', Object.keys(analysisResults.categorizedReasons).length],
-    ['Каналов с отказами:', Object.keys(analysisResults.channelAnalysis).length]
-  ];
-  
-  sheet.getRange(currentRow, 1, generalStats.length, 2).setValues(generalStats);
-  sheet.getRange(currentRow, 1, generalStats.length, 1).setFontWeight('bold');
-  currentRow += generalStats.length + 2;
-  
-  // 2. Категории причин отказов
-  sheet.getRange(currentRow, 1, 1, 3).merge();
-  sheet.getRange(currentRow, 1).setValue('📊 КАТЕГОРИИ ПРИЧИН ОТКАЗОВ');
-  applyHeaderStyle_(sheet.getRange(currentRow, 1, 1, 3));
-  currentRow++;
-  
-  const categoryHeaders = [['Категория', 'Количество', 'Процент']];
-  sheet.getRange(currentRow, 1, 1, 3).setValues(categoryHeaders);
-  applySubheaderStyle_(sheet.getRange(currentRow, 1, 1, 3));
-  currentRow++;
-  
-  const totalReasons = Object.values(analysisResults.categorizedReasons)
-    .reduce((sum, reasons) => sum + reasons.length, 0);
-  
-  const categoryData = Object.entries(analysisResults.categorizedReasons)
-    .sort(([,a], [,b]) => b.length - a.length)
-    .map(([category, reasons]) => [
-      category,
-      reasons.length,
-      totalReasons > 0 ? `${(reasons.length / totalReasons * 100).toFixed(1)}%` : '0%'
-    ]);
-  
-  if (categoryData.length > 0) {
-    sheet.getRange(currentRow, 1, categoryData.length, 3).setValues(categoryData);
-    currentRow += categoryData.length;
-  }
-  currentRow += 2;
-  
-  // 3. Топ каналов по отказам
-  sheet.getRange(currentRow, 1, 1, 4).merge();
-  sheet.getRange(currentRow, 1).setValue('🎯 КАНАЛЫ С НАИБОЛЬШИМ КОЛИЧЕСТВОМ ОТКАЗОВ');
-  applyHeaderStyle_(sheet.getRange(currentRow, 1, 1, 4));
-  currentRow++;
-  
-  const channelHeaders = [['Канал', 'Отказы', 'Средний чек', 'Основные причины']];
-  sheet.getRange(currentRow, 1, 1, 4).setValues(channelHeaders);
-  applySubheaderStyle_(sheet.getRange(currentRow, 1, 1, 4));
-  currentRow++;
-  
-  const channelData = Object.entries(analysisResults.channelAnalysis)
-    .sort(([,a], [,b]) => b.count - a.count)
-    .slice(0, 10)
-    .map(([channel, stats]) => [
-      channel,
-      stats.count,
-      formatCurrency_(stats.averageBudget),
-      Object.keys(stats.commonReasons).slice(0, 2).join(', ')
-    ]);
-  
-  if (channelData.length > 0) {
-    sheet.getRange(currentRow, 1, channelData.length, 4).setValues(channelData);
-    currentRow += channelData.length;
-  }
-  currentRow += 2;
-  
-  // 4. Ключевые инсайты от GPT
-  if (analysisResults.insights.length > 0) {
-    sheet.getRange(currentRow, 1, 1, 2).merge();
-    sheet.getRange(currentRow, 1).setValue('💡 КЛЮЧЕВЫЕ ИНСАЙТЫ');
-    applyHeaderStyle_(sheet.getRange(currentRow, 1, 1, 2));
-    currentRow++;
+  try {
+    // 1. ОБЩАЯ СТАТИСТИКА (начинаем с строки 5)
+    let currentRow = 5;
     
-    analysisResults.insights.slice(0, 5).forEach((insight, index) => {
-      sheet.getRange(currentRow, 1).setValue(`${index + 1}.`);
-      sheet.getRange(currentRow, 2).setValue(insight);
-      sheet.getRange(currentRow, 1).setFontWeight('bold');
-      currentRow++;
+    const generalStats = [
+      ['Всего отказов:', analysisResults.totalRefusals],
+      ['Категорий причин:', Object.keys(analysisResults.categorizedReasons).length],
+      ['Каналов с отказами:', Object.keys(analysisResults.channelAnalysis).length]
+    ];
+    
+    generalStats.forEach(([label, value], index) => {
+      sheet.getRange(currentRow + index, 1).setValue(label)
+        .setFontWeight('bold')
+        .setBackground('#f8f9fa');
+      sheet.getRange(currentRow + index, 2).setValue(value)
+        .setHorizontalAlignment('center')
+        .setBackground('#ffffff');
     });
     
-    currentRow++;
-  }
-  
-  // 5. Рекомендации от GPT
-  if (analysisResults.recommendations.length > 0) {
-    sheet.getRange(currentRow, 1, 1, 2).merge();
-    sheet.getRange(currentRow, 1).setValue('🎯 РЕКОМЕНДАЦИИ');
-    applyHeaderStyle_(sheet.getRange(currentRow, 1, 1, 2));
-    currentRow++;
+    // 2. КАТЕГОРИИ ПРИЧИН ОТКАЗОВ (начинаем с строки 12)
+    currentRow = 12;
+    const totalReasons = Object.values(analysisResults.categorizedReasons)
+      .reduce((sum, reasons) => sum + reasons.length, 0);
     
-    analysisResults.recommendations.slice(0, 5).forEach((recommendation, index) => {
-      sheet.getRange(currentRow, 1).setValue(`${index + 1}.`);
-      sheet.getRange(currentRow, 2).setValue(recommendation);
-      sheet.getRange(currentRow, 1).setFontWeight('bold');
-      currentRow++;
-    });
+    const categoryData = Object.entries(analysisResults.categorizedReasons)
+      .sort(([,a], [,b]) => b.length - a.length)
+      .map(([category, reasons]) => [
+        category,
+        reasons.length,
+        totalReasons > 0 ? `${(reasons.length / totalReasons * 100).toFixed(1)}%` : '0%'
+      ]);
+    
+    if (categoryData.length > 0) {
+      categoryData.forEach(([category, count, percent], index) => {
+        const rowNum = currentRow + index;
+        
+        // Чередование цветов строк
+        const bgColor = index % 2 === 0 ? '#f8f9fa' : '#ffffff';
+        
+        sheet.getRange(rowNum, 1).setValue(category)
+          .setBackground(bgColor);
+        sheet.getRange(rowNum, 2).setValue(count)
+          .setBackground(bgColor)
+          .setHorizontalAlignment('center');
+        sheet.getRange(rowNum, 3).setValue(percent)
+          .setBackground(bgColor)
+          .setHorizontalAlignment('center');
+      });
+    }
+    
+    // 3. КАНАЛЫ С ОТКАЗАМИ (начинаем с строки 24)
+    currentRow = 24;
+    const channelData = Object.entries(analysisResults.channelAnalysis)
+      .sort(([,a], [,b]) => b.count - a.count)
+      .slice(0, 8);
+    
+    if (channelData.length > 0) {
+      channelData.forEach(([channel, stats], index) => {
+        const rowNum = currentRow + index;
+        const bgColor = index % 2 === 0 ? '#f8f9fa' : '#ffffff';
+        
+        sheet.getRange(rowNum, 1).setValue(channel)
+          .setBackground(bgColor);
+        sheet.getRange(rowNum, 2).setValue(stats.count)
+          .setBackground(bgColor)
+          .setHorizontalAlignment('center');
+        sheet.getRange(rowNum, 3).setValue(formatCurrency_(stats.averageBudget))
+          .setBackground(bgColor)
+          .setHorizontalAlignment('right');
+        sheet.getRange(rowNum, 4).setValue(Object.keys(stats.commonReasons).slice(0, 2).join(', '))
+          .setBackground(bgColor);
+      });
+    }
+    
+    // 4. КЛЮЧЕВЫЕ ИНСАЙТЫ (начинаем с строки 35)
+    if (analysisResults.insights.length > 0) {
+      currentRow = 35;
+      analysisResults.insights.slice(0, 8).forEach((insight, index) => {
+        const rowNum = currentRow + index;
+        const bgColor = index % 2 === 0 ? '#fff3e0' : '#ffffff';
+        
+        sheet.getRange(rowNum, 1).setValue(`${index + 1}.`)
+          .setFontWeight('bold')
+          .setBackground(bgColor);
+        sheet.getRange(rowNum, 2, 1, 4).merge()
+          .setValue(insight)
+          .setBackground(bgColor)
+          .setWrap(true);
+      });
+    }
+    
+    // 5. РЕКОМЕНДАЦИИ (начинаем с строки 47)
+    if (analysisResults.recommendations.length > 0) {
+      currentRow = 47;
+      analysisResults.recommendations.slice(0, 8).forEach((recommendation, index) => {
+        const rowNum = currentRow + index;
+        const bgColor = index % 2 === 0 ? '#fce4ec' : '#ffffff';
+        
+        sheet.getRange(rowNum, 1).setValue(`${index + 1}.`)
+          .setFontWeight('bold')
+          .setBackground(bgColor);
+        sheet.getRange(rowNum, 2, 1, 4).merge()
+          .setValue(recommendation)
+          .setBackground(bgColor)
+          .setWrap(true);
+      });
+    }
+    
+    logInfo_('REFUSAL_STRUCTURE', 'Структура красивого отчета создана');
+    
+  } catch (error) {
+    logError_('REFUSAL_STRUCTURE', 'Ошибка создания структуры отчета', error);
   }
-  
-  // Автоматическая ширина колонок
-  sheet.autoResizeColumns(1, 4);
-  
-  // Применяем стили к данным
-  const dataRange = sheet.getRange(3, 1, currentRow - 3, 4);
-  applyDataStyle_(dataRange);
 }
 
 /**
- * Добавляет диаграммы к анализу причин отказов
+ * Добавляет красивые диаграммы к анализу причин отказов
+ * Обновленная версия для нового дизайна
  * @param {Sheet} sheet - Лист таблицы
  * @param {Object} analysisResults - Результаты анализа
  * @private
  */
 function addRefusalAnalysisCharts_(sheet, analysisResults) {
-  // 1. Круговая диаграмма категорий отказов
-  if (Object.keys(analysisResults.categorizedReasons).length > 0) {
-    const categoriesChartData = [['Категория', 'Количество']].concat(
-      Object.entries(analysisResults.categorizedReasons)
-        .sort(([,a], [,b]) => b.length - a.length)
-        .map(([category, reasons]) => [category, reasons.length])
-    );
-    
-    // Записываем данные для диаграммы
-    sheet.getRange(1, 6, categoriesChartData.length, 2).setValues(categoriesChartData);
-    
-    try {
-      const categoriesChart = createChart_(sheet, 'pie', categoriesChartData, {
-        title: 'Распределение причин отказов по категориям',
-        position: { row: 3, col: 6 },
-        width: 500,
-        height: 350
-      });
-    } catch (chartError) {
-      logWarning_('CHARTS', 'Ошибка создания диаграммы категорий', chartError);
+  try {
+    // 1. Круговая диаграмма категорий отказов (правая часть, строки 4-18)
+    if (Object.keys(analysisResults.categorizedReasons).length > 0) {
+      const categoriesChartData = [['Категория', 'Количество']].concat(
+        Object.entries(analysisResults.categorizedReasons)
+          .sort(([,a], [,b]) => b.length - a.length)
+          .slice(0, 8) // Топ-8 категорий для читаемости
+          .map(([category, reasons]) => [category, reasons.length])
+      );
+      
+      // Записываем данные для диаграммы в столбцы H-I
+      sheet.getRange(4, 8, categoriesChartData.length, 2).setValues(categoriesChartData);
+      
+      try {
+        const categoriesChart = createChart_(sheet, 'pie', categoriesChartData, {
+          title: 'ТОП-8 причин отказов',
+          position: { row: 4, col: 10 },
+          width: 450,
+          height: 350
+        });
+        logInfo_('CHARTS', 'Диаграмма категорий создана');
+      } catch (chartError) {
+        logWarning_('CHARTS', 'Ошибка создания диаграммы категорий', chartError);
+      }
     }
-  }
-  
-  // 2. Столбчатая диаграмма отказов по каналам
-  if (Object.keys(analysisResults.channelAnalysis).length > 0) {
-    const channelsChartData = [['Канал', 'Количество отказов']].concat(
-      Object.entries(analysisResults.channelAnalysis)
-        .sort(([,a], [,b]) => b.count - a.count)
-        .slice(0, 10)
-        .map(([channel, stats]) => [channel, stats.count])
-    );
     
-    // Записываем данные для диаграммы
-    sheet.getRange(1, 9, channelsChartData.length, 2).setValues(channelsChartData);
-    
-    try {
-      const channelsChart = createChart_(sheet, 'column', channelsChartData, {
-        title: 'Количество отказов по каналам',
-        position: { row: 3, col: 12 },
-        width: 500,
-        height: 350
-      });
-    } catch (chartError) {
-      logWarning_('CHARTS', 'Ошибка создания диаграммы каналов', chartError);
+    // 2. Столбчатая диаграмма отказов по каналам (правая часть, строки 22-36)
+    if (Object.keys(analysisResults.channelAnalysis).length > 0) {
+      const channelsChartData = [['Канал', 'Количество отказов']].concat(
+        Object.entries(analysisResults.channelAnalysis)
+          .sort(([,a], [,b]) => b.count - a.count)
+          .slice(0, 8) // Топ-8 каналов
+          .map(([channel, stats]) => [channel.length > 15 ? channel.substring(0, 15) + '...' : channel, stats.count])
+      );
+      
+      // Записываем данные для диаграммы в столбцы H-I
+      sheet.getRange(22, 8, channelsChartData.length, 2).setValues(channelsChartData);
+      
+      try {
+        const channelsChart = createChart_(sheet, 'column', channelsChartData, {
+          title: 'Отказы по каналам (ТОП-8)',
+          position: { row: 22, col: 10 },
+          width: 450,
+          height: 300
+        });
+        logInfo_('CHARTS', 'Диаграмма каналов создана');
+      } catch (chartError) {
+        logWarning_('CHARTS', 'Ошибка создания диаграммы каналов', chartError);
+      }
     }
-  }
-  
-  // 3. Линейная диаграмма трендов по месяцам
-  if (analysisResults.monthlyTrends.length > 0) {
-    const trendsChartData = [['Месяц', 'Количество отказов']].concat(
-      analysisResults.monthlyTrends.map(item => [item.month, item.count])
-    );
     
-    // Записываем данные для диаграммы
-    sheet.getRange(1, 12, trendsChartData.length, 2).setValues(trendsChartData);
-    
-    try {
-      const trendsChart = createChart_(sheet, 'line', trendsChartData, {
-        title: 'Динамика отказов по месяцам',
-        position: { row: 25, col: 6 },
-        width: 600,
-        height: 350
-      });
-    } catch (chartError) {
-      logWarning_('CHARTS', 'Ошибка создания диаграммы трендов', chartError);
+    // 3. Тренды по месяцам (нижняя часть листа, строки 60+)
+    if (analysisResults.monthlyTrends && analysisResults.monthlyTrends.length > 1) {
+      const trendsChartData = [['Месяц', 'Количество отказов']].concat(
+        analysisResults.monthlyTrends
+          .slice(-6) // Последние 6 месяцев
+          .map(item => [item.month.length > 10 ? item.month.substring(0, 10) : item.month, item.count])
+      );
+      
+      // Записываем данные для диаграммы в столбцы A-B (строки 60+)
+      sheet.getRange(60, 1, trendsChartData.length, 2).setValues(trendsChartData);
+      
+      try {
+        const trendsChart = createChart_(sheet, 'line', trendsChartData, {
+          title: 'Динамика отказов (последние 6 месяцев)',
+          position: { row: 60, col: 3 },
+          width: 600,
+          height: 300
+        });
+        logInfo_('CHARTS', 'Диаграмма трендов создана');
+      } catch (chartError) {
+        logWarning_('CHARTS', 'Ошибка создания диаграммы трендов', chartError);
+      }
     }
+    
+    logInfo_('CHARTS', 'Все диаграммы для анализа отказов созданы');
+    
+  } catch (error) {
+    logError_('CHARTS', 'Ошибка создания диаграмм анализа отказов', error);
   }
 }
 
@@ -966,5 +985,152 @@ function diagnoseRefusalData() {
   } else {
     console.log('❌ Отказанные сделки не найдены!');
     console.log('🔍 Проверьте, что в колонке D есть статус "Закрыто и не реализовано"');
+  }
+}
+
+/**
+ * Применяет красивое оформление к листу анализа отказов
+ * Создает стиль как в старых красивых отчетах
+ * @param {Sheet} sheet - Лист для оформления
+ * @private
+ */
+function applyRefusalAnalysisBeautifulStyle_(sheet) {
+  try {
+    // Очищаем лист
+    sheet.clear();
+    
+    // Устанавливаем фон всего листа
+    const maxRows = 100;
+    const maxCols = 15;
+    sheet.getRange(1, 1, maxRows, maxCols)
+      .setBackground('#FFFFFF')
+      .setFontFamily('Arial')
+      .setFontSize(10);
+    
+    // ЗАГОЛОВОК ОТЧЕТА (A1:N1)
+    sheet.getRange('A1:N1').merge();
+    sheet.getRange('A1')
+      .setValue('📊 АНАЛИЗ ПРИЧИН ОТКАЗОВ')
+      .setBackground('#4285f4')
+      .setFontColor('#FFFFFF')
+      .setFontSize(16)
+      .setFontWeight('bold')
+      .setHorizontalAlignment('center')
+      .setVerticalAlignment('middle');
+    sheet.setRowHeight(1, 50);
+    
+    // ВРЕМЯ ОБНОВЛЕНИЯ (A2:N2)  
+    sheet.getRange('A2:N2').merge();
+    sheet.getRange('A2')
+      .setValue(`⏰ Последнее обновление: ${getCurrentDateMoscow_().toLocaleString()}`)
+      .setBackground('#f8f9fa')
+      .setFontSize(11)
+      .setFontStyle('italic')
+      .setHorizontalAlignment('center')
+      .setVerticalAlignment('middle');
+    sheet.setRowHeight(2, 30);
+    
+    // БЛОК 1: ОБЩАЯ СТАТИСТИКА (строки 4-8)
+    // Заголовок блока
+    sheet.getRange('A4:F4').merge();
+    sheet.getRange('A4')
+      .setValue('🔍 ОБЩАЯ СТАТИСТИКА ОТКАЗОВ')
+      .setBackground('#e3f2fd')
+      .setFontColor('#1565c0')
+      .setFontSize(14)
+      .setFontWeight('bold')
+      .setHorizontalAlignment('center')
+      .setVerticalAlignment('middle');
+    sheet.setRowHeight(4, 35);
+    
+    // БЛОК 2: КАТЕГОРИИ ПРИЧИН (строки 10-20)
+    sheet.getRange('A10:F10').merge();
+    sheet.getRange('A10')
+      .setValue('📊 КАТЕГОРИИ ПРИЧИН ОТКАЗОВ')
+      .setBackground('#f3e5f5')
+      .setFontColor('#7b1fa2')
+      .setFontSize(14)
+      .setFontWeight('bold')
+      .setHorizontalAlignment('center')
+      .setVerticalAlignment('middle');
+    sheet.setRowHeight(10, 35);
+    
+    // Заголовки таблицы категорий
+    const categoryHeaders = ['Категория', 'Количество', 'Процент'];
+    for (let i = 0; i < categoryHeaders.length; i++) {
+      sheet.getRange(11, i + 1)
+        .setValue(categoryHeaders[i])
+        .setBackground('#9c27b0')
+        .setFontColor('#ffffff')
+        .setFontWeight('bold')
+        .setHorizontalAlignment('center')
+        .setVerticalAlignment('middle');
+    }
+    sheet.setRowHeight(11, 30);
+    
+    // БЛОК 3: КАНАЛЫ С ОТКАЗАМИ (строки 22-32)
+    sheet.getRange('A22:G22').merge();
+    sheet.getRange('A22')
+      .setValue('🎯 КАНАЛЫ С НАИБОЛЬШИМ КОЛИЧЕСТВОМ ОТКАЗОВ')
+      .setBackground('#e8f5e8')
+      .setFontColor('#388e3c')
+      .setFontSize(14)
+      .setFontWeight('bold')
+      .setHorizontalAlignment('center')
+      .setVerticalAlignment('middle');
+    sheet.setRowHeight(22, 35);
+    
+    // Заголовки таблицы каналов
+    const channelHeaders = ['Канал', 'Отказы', 'Средний чек', 'Основные причины'];
+    for (let i = 0; i < channelHeaders.length; i++) {
+      sheet.getRange(23, i + 1)
+        .setValue(channelHeaders[i])
+        .setBackground('#4caf50')
+        .setFontColor('#ffffff')
+        .setFontWeight('bold')
+        .setHorizontalAlignment('center')
+        .setVerticalAlignment('middle');
+    }
+    sheet.setRowHeight(23, 30);
+    
+    // БЛОК 4: ИНСАЙТЫ (строки 34-44)
+    sheet.getRange('A34:F34').merge();
+    sheet.getRange('A34')
+      .setValue('💡 КЛЮЧЕВЫЕ ИНСАЙТЫ')
+      .setBackground('#fff3e0')
+      .setFontColor('#f57c00')
+      .setFontSize(14)
+      .setFontWeight('bold')
+      .setHorizontalAlignment('center')
+      .setVerticalAlignment('middle');
+    sheet.setRowHeight(34, 35);
+    
+    // БЛОК 5: РЕКОМЕНДАЦИИ (строки 46-56)
+    sheet.getRange('A46:F46').merge();
+    sheet.getRange('A46')
+      .setValue('🎯 РЕКОМЕНДАЦИИ')
+      .setBackground('#fce4ec')
+      .setFontColor('#c2185b')
+      .setFontSize(14)
+      .setFontWeight('bold')
+      .setHorizontalAlignment('center')
+      .setVerticalAlignment('middle');
+    sheet.setRowHeight(46, 35);
+    
+    // Устанавливаем ширину столбцов
+    sheet.setColumnWidth(1, 200);  // Колонка A - широкая для названий
+    sheet.setColumnWidth(2, 120);  // Колонка B 
+    sheet.setColumnWidth(3, 100);  // Колонка C
+    sheet.setColumnWidth(4, 150);  // Колонка D
+    sheet.setColumnWidth(5, 150);  // Колонка E
+    sheet.setColumnWidth(6, 80);   // Колонка F
+    
+    // Замораживаем первые 2 строки
+    sheet.setFrozenRows(2);
+    
+    logInfo_('REFUSAL_STYLE', 'Красивое оформление анализа отказов применено');
+    
+  } catch (error) {
+    logError_('REFUSAL_STYLE', 'Ошибка применения красивого оформления', error);
   }
 }
