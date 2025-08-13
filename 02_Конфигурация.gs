@@ -147,7 +147,7 @@ const CONFIG = {
   },
 
   // Динамически определяемые колонки (будет установлено автоматически)
-  WORKING_AMO_COLUMNS: null,
+  WORKING_AMO_COLUMNS: null
 
   // Цветовая схема для отчетов
   COLORS: {
@@ -400,7 +400,6 @@ function validateConfiguration() {
   
   // Проверяем основные секции
   if (!CONFIG.SHEETS) errors.push('Отсутствует конфигурация SHEETS');
-  if (!CONFIG.WORKING_AMO_COLUMNS) errors.push('Отсутствует конфигурация WORKING_AMO_COLUMNS');
   if (!CONFIG.COLORS) errors.push('Отсутствует конфигурация COLORS');
   
   // Проверяем обязательные листы
@@ -411,13 +410,15 @@ function validateConfiguration() {
     }
   });
   
-  // Проверяем обязательные колонки
-  const requiredColumns = ['ID', 'NAME', 'STATUS', 'CREATED_AT'];
-  requiredColumns.forEach(column => {
-    if (CONFIG.WORKING_AMO_COLUMNS[column] === undefined) {
-      errors.push(`Отсутствует настройка колонки: ${column}`);
-    }
-  });
+  // Проверяем колонки только после инициализации
+  if (CONFIG.WORKING_AMO_COLUMNS) {
+    const requiredColumns = ['ID', 'NAME', 'STATUS', 'CREATED_AT'];
+    requiredColumns.forEach(column => {
+      if (CONFIG.WORKING_AMO_COLUMNS[column] === undefined) {
+        errors.push(`Отсутствует настройка колонки: ${column}`);
+      }
+    });
+  }
   
   if (errors.length > 0) {
     console.error('Ошибки конфигурации:', errors);
@@ -530,15 +531,23 @@ function detectTableStructure() {
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.WORKING_AMO);
     
     if (!sheet) {
-      console.error('❌ Лист РАБОЧИЙ_АМО не найден');
-      return null;
+      console.log('❌ Лист РАБОЧИЙ_АМО не найден, используем правильную структуру по умолчанию');
+      CONFIG.WORKING_AMO_COLUMNS = CONFIG.WORKING_AMO_COLUMNS_CORRECT;
+      return 'default';
     }
     
     const lastColumn = sheet.getLastColumn();
-    const headers = sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
+    
+    if (lastColumn === 0) {
+      console.log('❌ Таблица пуста, используем правильную структуру по умолчанию');
+      CONFIG.WORKING_AMO_COLUMNS = CONFIG.WORKING_AMO_COLUMNS_CORRECT;
+      return 'empty';
+    }
+    
+    const headers = sheet.getRange(1, 1, 1, Math.min(lastColumn, 10)).getValues()[0];
     
     console.log(`📊 Обнаружено столбцов: ${lastColumn}`);
-    console.log('📋 Заголовки:', headers.slice(0, 10).join(', ') + '...');
+    console.log('📋 Заголовки:', headers.slice(0, 5).join(', ') + (headers.length > 5 ? '...' : ''));
     
     // Определяем структуру по количеству столбцов и ключевым заголовкам
     if (lastColumn === 41 && headers[0] === 'Сделка.ID' && headers[1] === 'Сделка.Название') {
@@ -560,6 +569,7 @@ function detectTableStructure() {
     
   } catch (error) {
     console.error('❌ Ошибка определения структуры:', error);
+    console.log('🔧 Используем правильную структуру по умолчанию');
     CONFIG.WORKING_AMO_COLUMNS = CONFIG.WORKING_AMO_COLUMNS_CORRECT;
     return 'error';
   }
@@ -598,11 +608,12 @@ function validateAndFixStructure() {
 
 // Автоматическая валидация при загрузке
 try {
+  // Сначала определяем структуру таблицы
+  detectTableStructure();
+  
+  // Затем валидируем конфигурацию
   validateConfiguration();
   const tokenStatus = validateApiTokens();
-  
-  // Определяем структуру таблицы
-  detectTableStructure();
   
   console.log('🔧 Конфигурация AMO Analytics загружена успешно');
   
