@@ -6,8 +6,8 @@
 // 🔑 API ТОКЕНЫ И ДОСТУПЫ (ЗАПОЛНИТЕ СВОИМИ ДАННЫМИ!)
 const API_TOKENS = {
   // Яндекс.Метрика - https://oauth.yandex.ru/authorize?response_type=token&client_id=c2a8f5c2abeb4b9288df8b3fb6b3c9a2
-  YANDEX_METRIKA_TOKEN: 'ВСТАВЬТЕ_СЮДА_ВАШ_ТОКЕН_МЕТРИКИ',
-  YANDEX_METRIKA_COUNTER_ID: 'ВСТАВЬТЕ_СЮДА_ID_СЧЕТЧИКА', // например: '12345678'
+  YANDEX_METRIKA_TOKEN: 'y0__xD0w6uECBj4ljkggva_9RMw9bDB7gdDIpOPvBldQrcMvLUb_Bf2t-dTWg',
+  YANDEX_METRIKA_COUNTER_ID: '101368505',
   
   // Яндекс.Директ - https://oauth.yandex.ru/authorize?response_type=token&client_id=ce780928adc04f78b79c0ac932eb5c8e  
   YANDEX_DIRECT_TOKEN: 'ВСТАВЬТЕ_СЮДА_ВАШ_ТОКЕН_ДИРЕКТА',
