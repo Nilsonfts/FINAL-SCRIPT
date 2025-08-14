@@ -170,6 +170,7 @@ function isPaidStatus(status) {
 
 /**
  * Определение способа обращения (звонок или заявка) и источника
+ * ИСПРАВЛЕНО: правильный подсчет звонков по колонке M
  */
 function getContactMethodAndSource(row) {
   if (!row || !CONFIG.WORKING_AMO_COLUMNS) {
@@ -182,7 +183,7 @@ function getContactMethodAndSource(row) {
     };
   }
   
-  // Проверяем наличие телефона в колл-трекинге
+  // ИСПРАВЛЕНО: Проверяем колонку M (Сделка.Номер линии MANGO OFFICE)
   const mangoLine = row[CONFIG.WORKING_AMO_COLUMNS.DEAL_MANGO_LINE] || '';
   const hasCallTracking = mangoLine && mangoLine.toString().trim() !== '';
   
@@ -190,7 +191,7 @@ function getContactMethodAndSource(row) {
   const utmSource = (row[CONFIG.WORKING_AMO_COLUMNS.UTM_SOURCE] || '').toLowerCase().trim();
   const hasUtm = utmSource && utmSource !== '';
   
-  // Если есть номер колл-трекинга - это ЗВОНОК
+  // ИСПРАВЛЕНО: Если есть номер в колонке M - это ЗВОНОК
   if (hasCallTracking) {
     const cleanPhone = mangoLine.toString().replace(/\D/g, '');
     if (CALL_TRACKING_MAPPING[cleanPhone]) {
@@ -203,9 +204,9 @@ function getContactMethodAndSource(row) {
     return {
       method: 'call',
       source: 'call_unknown',
-      name: 'Звонок с неизвестного номера',
+      name: `Звонок с номера ${mangoLine}`,
       type: 'Звонки',
-      channel: 'Неизвестный'
+      channel: `Звонок (${mangoLine})`
     };
   }
   
@@ -1280,6 +1281,64 @@ function calculateBarMetrics(data) {
     (metrics.successfulVisits / metrics.totalLeads) * 100 : 0;
   
   return metrics;
+}
+
+/**
+ * ТЕСТОВАЯ ФУНКЦИЯ ДЛЯ ПРОВЕРКИ АНАЛИЗА КОНКРЕТНОЙ СТРОКИ
+ */
+function testRowAnalysis(rowNumber) {
+  const data = getWorkingAmoData();
+  if (!data || rowNumber > data.length) {
+    console.log('❌ Строка не найдена или нет данных');
+    return;
+  }
+  
+  const row = data[rowNumber - 1];
+  
+  console.log(`🔍 ДЕТАЛЬНЫЙ АНАЛИЗ СТРОКИ ${rowNumber}:`);
+  console.log(`ID сделки (A): "${row[0]}"`);
+  console.log(`Название (B): "${row[1]}"`);
+  console.log(`Статус (C): "${row[2]}"`);
+  console.log(`MANGO линия (М): "${row[12] || 'пусто'}"`);      // Колонка M
+  console.log(`UTM_SOURCE (AB): "${row[27] || 'пусто'}"`);      // Колонка AB
+  console.log(`Счет факт (P): "${row[15] || 0}"`);             // Колонка P
+  
+  // Анализируем тип обращения
+  const contactInfo = getContactMethodAndSource(row);
+  
+  console.log('--- РЕЗУЛЬТАТ АНАЛИЗА ---');
+  console.log(`Способ обращения: ${contactInfo.method}`);
+  console.log(`Название источника: ${contactInfo.name}`);
+  console.log(`Тип: ${contactInfo.type}`);
+  console.log(`Канал: ${contactInfo.channel}`);
+  
+  // Проверяем статус
+  const status = row[2] || '';
+  const isSuccess = isSuccessStatus(status);
+  console.log(`Успешный статус: ${isSuccess ? 'ДА' : 'НЕТ'}`);
+  
+  // Определяем логику подсчета
+  const mangoLine = row[12] || '';
+  const utmSource = row[27] || '';
+  const hasMangoLine = mangoLine && mangoLine.toString().trim() !== '';
+  const hasUtm = utmSource && utmSource.toString().trim() !== '';
+  
+  console.log('--- ЛОГИКА ПОДСЧЕТА ---');
+  if (hasMangoLine) {
+    console.log(`✅ ЗАСЧИТЫВАЕТСЯ КАК ЗВОНОК (есть номер в колонке М: "${mangoLine}")`);
+  } else if (hasUtm) {
+    console.log(`✅ ЗАСЧИТЫВАЕТСЯ КАК ЗАЯВКА (есть UTM в колонке AB: "${utmSource}")`);
+  } else {
+    console.log(`❓ НЕ ЗАСЧИТЫВАЕТСЯ (нет ни MANGO, ни UTM)`);
+  }
+  
+  return {
+    rowNumber,
+    isCall: hasMangoLine,
+    isForm: hasUtm,
+    isSuccess,
+    contactInfo
+  };
 }
 
 /**

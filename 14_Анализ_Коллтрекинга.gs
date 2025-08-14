@@ -4,7 +4,7 @@
  */
 
 function analyzeContactMethods() {
-  console.log('📞 Анализируем способы обращения клиентов...');
+  console.log('📞 ИСПРАВЛЕННЫЙ АНАЛИЗ: Способы обращения клиентов...');
   
   try {
     const data = getWorkingAmoData();
@@ -25,10 +25,7 @@ function analyzeContactMethods() {
       formsRevenue: 0
     };
     
-    // Детальный анализ по каналам
-    const channelAnalysis = {};
-    
-    // Анализ по номерам колл-трекинга
+    // ИСПРАВЛЕНО: Анализ по номерам из колонки M (индекс 12)
     const phoneAnalysis = {
       '78123172353': { name: 'Основной сайт', calls: 0, success: 0, revenue: 0, avgCheck: 0 },
       '78122428017': { name: 'Яндекс Карты', calls: 0, success: 0, revenue: 0, avgCheck: 0 },
@@ -36,6 +33,9 @@ function analyzeContactMethods() {
       '78123177149': { name: '2Гис', calls: 0, success: 0, revenue: 0, avgCheck: 0 },
       '78123177310': { name: 'Соц сети + Google', calls: 0, success: 0, revenue: 0, avgCheck: 0 }
     };
+    
+    // Детальный анализ по каналам
+    const channelAnalysis = {};
     
     // Анализ по UTM источникам
     const utmAnalysis = {};
@@ -46,81 +46,62 @@ function analyzeContactMethods() {
       afterJuly2025: { total: 0, calls: 0, forms: 0, unknown: 0 }
     };
     
-    // Анализируем каждую строку
-    data.forEach(row => {
+    console.log(`📊 Обрабатываем ${data.length} строк данных...`);
+    
+    // ИСПРАВЛЕНО: Анализируем каждую строку по правильной логике
+    data.forEach((row, index) => {
       stats.total++;
       
-      const contactInfo = getContactMethodAndSource(row);
-      const status = row[CONFIG.WORKING_AMO_COLUMNS.STATUS] || '';
-      const factAmount = formatNumber(row[CONFIG.WORKING_AMO_COLUMNS.FACT_AMOUNT]);
+      // ИСПРАВЛЕНО: Читаем прямо по индексам колонок
+      const mangoLine = row[12] || '';                    // Колонка M - Сделка.Номер линии MANGO OFFICE
+      const status = row[2] || '';                        // Колонка C - Сделка.Статус
+      const factAmount = formatNumber(row[15] || 0);      // Колонка P - Счет факт
+      const utmSource = (row[27] || '').toString().trim(); // Колонка AB - UTM_SOURCE
       const createdAt = row[CONFIG.WORKING_AMO_COLUMNS.CREATED_AT];
       const isSuccess = isSuccessStatus(status);
       
-      // Общая статистика по методам
-      if (contactInfo.method === 'call') {
+      // ИСПРАВЛЕНО: Определяем тип по четкой логике
+      const hasMangoLine = mangoLine && mangoLine.toString().trim() !== '';
+      const hasUtm = utmSource && utmSource !== '';
+      
+      let contactMethod = 'unknown';
+      let contactChannel = 'Неизвестный';
+      
+      if (hasMangoLine) {
+        // Это ЗВОНОК (есть номер в колонке M)
+        contactMethod = 'call';
         stats.calls++;
+        
         if (isSuccess) {
           stats.callsSuccess++;
           stats.callsRevenue += factAmount;
         }
-      } else if (contactInfo.method === 'form') {
-        stats.forms++;
-        if (isSuccess) {
-          stats.formsSuccess++;
-          stats.formsRevenue += factAmount;
-        }
-      } else {
-        stats.unknown++;
-      }
-      
-      // Анализ по периодам
-      const period = hasProperUtmTracking(createdAt) ? 'afterJuly2025' : 'beforeJuly2025';
-      periodAnalysis[period].total++;
-      if (contactInfo.method === 'call') periodAnalysis[period].calls++;
-      else if (contactInfo.method === 'form') periodAnalysis[period].forms++;
-      else periodAnalysis[period].unknown++;
-      
-      // Детальный анализ по каналам
-      const channelKey = contactInfo.channel;
-      if (!channelAnalysis[channelKey]) {
-        channelAnalysis[channelKey] = {
-          name: contactInfo.channel,
-          type: contactInfo.type,
-          calls: 0,
-          forms: 0,
-          total: 0,
-          success: 0,
-          revenue: 0,
-          avgCheck: 0,
-          conversion: 0
-        };
-      }
-      
-      channelAnalysis[channelKey].total++;
-      if (contactInfo.method === 'call') channelAnalysis[channelKey].calls++;
-      else if (contactInfo.method === 'form') channelAnalysis[channelKey].forms++;
-      
-      if (isSuccess) {
-        channelAnalysis[channelKey].success++;
-        channelAnalysis[channelKey].revenue += factAmount;
-      }
-      
-      // Анализ телефонов колл-трекинга
-      if (contactInfo.method === 'call') {
-        const mangoLine = row[CONFIG.WORKING_AMO_COLUMNS.DEAL_MANGO_LINE] || '';
+        
+        // Анализ конкретного номера
         const cleanPhone = mangoLine.toString().replace(/\D/g, '');
         if (phoneAnalysis[cleanPhone]) {
+          contactChannel = phoneAnalysis[cleanPhone].name;
           phoneAnalysis[cleanPhone].calls++;
           if (isSuccess) {
             phoneAnalysis[cleanPhone].success++;
             phoneAnalysis[cleanPhone].revenue += factAmount;
           }
+        } else {
+          contactChannel = `Неизвестный номер (${mangoLine})`;
         }
-      }
-      
-      // Анализ UTM источников
-      if (contactInfo.method === 'form') {
-        const utmSource = row[CONFIG.WORKING_AMO_COLUMNS.UTM_SOURCE] || 'no_utm';
+      } 
+      else if (hasUtm) {
+        // Это ЗАЯВКА (есть UTM, но нет MANGO)
+        contactMethod = 'form';
+        stats.forms++;
+        contactChannel = utmSource;
+        
+        if (isSuccess) {
+          stats.formsSuccess++;
+          stats.formsRevenue += factAmount;
+        }
+        
+        // Анализ UTM источников
         if (!utmAnalysis[utmSource]) {
           utmAnalysis[utmSource] = {
             forms: 0,
@@ -135,6 +116,43 @@ function analyzeContactMethods() {
           utmAnalysis[utmSource].success++;
           utmAnalysis[utmSource].revenue += factAmount;
         }
+      } 
+      else {
+        // Неопределенный тип
+        stats.unknown++;
+        contactMethod = 'unknown';
+        contactChannel = 'Неопределенный';
+      }
+      
+      // Анализ по периодам
+      const period = hasProperUtmTracking(createdAt) ? 'afterJuly2025' : 'beforeJuly2025';
+      periodAnalysis[period].total++;
+      if (contactMethod === 'call') periodAnalysis[period].calls++;
+      else if (contactMethod === 'form') periodAnalysis[period].forms++;
+      else periodAnalysis[period].unknown++;
+      
+      // Детальный анализ по каналам
+      if (!channelAnalysis[contactChannel]) {
+        channelAnalysis[contactChannel] = {
+          name: contactChannel,
+          type: contactMethod === 'call' ? 'Звонки' : contactMethod === 'form' ? 'Заявки' : 'Неизвестный',
+          calls: 0,
+          forms: 0,
+          total: 0,
+          success: 0,
+          revenue: 0,
+          avgCheck: 0,
+          conversion: 0
+        };
+      }
+      
+      channelAnalysis[contactChannel].total++;
+      if (contactMethod === 'call') channelAnalysis[contactChannel].calls++;
+      else if (contactMethod === 'form') channelAnalysis[contactChannel].forms++;
+      
+      if (isSuccess) {
+        channelAnalysis[contactChannel].success++;
+        channelAnalysis[contactChannel].revenue += factAmount;
       }
     });
     
@@ -151,6 +169,33 @@ function analyzeContactMethods() {
     Object.values(utmAnalysis).forEach(utm => {
       utm.avgCheck = utm.success > 0 ? utm.revenue / utm.success : 0;
       utm.conversion = utm.forms > 0 ? (utm.success / utm.forms * 100) : 0;
+    });
+    
+    // ИСПРАВЛЕННЫЙ ВЫВОД СТАТИСТИКИ
+    console.log('');
+    console.log('📊 ИСПРАВЛЕННАЯ СТАТИСТИКА ЗВОНКОВ:');
+    console.log('=====================================');
+    console.log(`📞 Всего звонков (колонка М заполнена): ${stats.calls}`);
+    console.log(`✅ Успешных звонков: ${stats.callsSuccess}`);
+    console.log(`💰 Выручка от звонков: ${formatCurrency(stats.callsRevenue)}`);
+    console.log(`📈 Конверсия звонков: ${stats.calls > 0 ? (stats.callsSuccess / stats.calls * 100).toFixed(1) : 0}%`);
+    console.log('');
+    console.log(`📝 Всего заявок (UTM без MANGO): ${stats.forms}`);
+    console.log(`✅ Успешных заявок: ${stats.formsSuccess}`);
+    console.log(`💰 Выручка от заявок: ${formatCurrency(stats.formsRevenue)}`);
+    console.log(`📈 Конверсия заявок: ${stats.forms > 0 ? (stats.formsSuccess / stats.forms * 100).toFixed(1) : 0}%`);
+    console.log('');
+    console.log(`❓ Неопределенных записей: ${stats.unknown}`);
+    console.log(`📊 Всего обработано: ${stats.total}`);
+    console.log('=====================================');
+    
+    // Детальная статистика по телефонам
+    console.log('');
+    console.log('📞 ДЕТАЛЬНАЯ СТАТИСТИКА ПО НОМЕРАМ:');
+    Object.entries(phoneAnalysis).forEach(([phone, data]) => {
+      if (data.calls > 0) {
+        console.log(`${phone} (${data.name}): ${data.calls} звонков, ${data.success} успешных`);
+      }
     });
     
     // Создаем красивый отчет
@@ -350,27 +395,80 @@ function analyzeContactMethods() {
 }
 
 /**
- * Быстрая проверка источника для конкретной строки
+ * ИСПРАВЛЕННАЯ функция для проверки источника конкретной строки
  */
 function testSourceDetection(rowNumber) {
   const data = getWorkingAmoData();
-  if (rowNumber > data.length) {
-    console.log('Строка не найдена');
+  if (!data || rowNumber > data.length) {
+    console.log('❌ Строка не найдена или нет данных');
     return;
   }
   
   const row = data[rowNumber - 1];
-  const contactInfo = getContactMethodAndSource(row);
   
-  console.log('=== АНАЛИЗ СТРОКИ', rowNumber, '===');
-  console.log('MANGO линия:', row[CONFIG.WORKING_AMO_COLUMNS.DEAL_MANGO_LINE] || 'нет');
-  console.log('UTM_SOURCE:', row[CONFIG.WORKING_AMO_COLUMNS.UTM_SOURCE] || 'нет');
-  console.log('R.Источник сделки:', row[CONFIG.WORKING_AMO_COLUMNS.DEAL_SOURCE] || 'нет');
-  console.log('Дата создания:', row[CONFIG.WORKING_AMO_COLUMNS.CREATED_AT]);
-  console.log('---');
-  console.log('Способ обращения:', contactInfo.method);
-  console.log('Определенный источник:', contactInfo.name);
-  console.log('Тип:', contactInfo.type);
-  console.log('Канал:', contactInfo.channel);
-  console.log('Код:', contactInfo.source);
+  console.log('');
+  console.log(`🔍 ИСПРАВЛЕННЫЙ АНАЛИЗ СТРОКИ ${rowNumber}:`);
+  console.log('=============================================');
+  console.log(`ID сделки (A): "${row[0] || 'пусто'}"`);
+  console.log(`Название (B): "${row[1] || 'пусто'}"`);
+  console.log(`Статус (C): "${row[2] || 'пусто'}"`);
+  console.log(`MANGO линия (М, индекс 12): "${row[12] || 'пусто'}"`);
+  console.log(`UTM_SOURCE (AB, индекс 27): "${row[27] || 'пусто'}"`);
+  console.log(`Счет факт (P, индекс 15): "${row[15] || 'пусто'}"`);
+  console.log('');
+  
+  // ИСПРАВЛЕННАЯ логика определения
+  const mangoLine = row[12] || '';
+  const utmSource = row[27] || '';
+  const status = row[2] || '';
+  
+  const hasMangoLine = mangoLine && mangoLine.toString().trim() !== '';
+  const hasUtm = utmSource && utmSource.toString().trim() !== '';
+  const isSuccess = isSuccessStatus(status);
+  
+  console.log('📊 РЕЗУЛЬТАТ ИСПРАВЛЕННОГО АНАЛИЗА:');
+  console.log('-----------------------------------');
+  
+  if (hasMangoLine) {
+    console.log(`✅ ТИП: ЗВОНОК (найден номер в колонке М)`);
+    console.log(`📞 Номер: ${mangoLine}`);
+    const cleanPhone = mangoLine.toString().replace(/\D/g, '');
+    console.log(`🧹 Очищенный номер: ${cleanPhone}`);
+    
+    // Проверяем в маппинге
+    const mapping = {
+      '78123172353': 'Основной сайт',
+      '78122428017': 'Яндекс Карты', 
+      '78122709071': 'Рестоклаб',
+      '78123177149': '2Гис',
+      '78123177310': 'Соц сети + Google'
+    };
+    
+    if (mapping[cleanPhone]) {
+      console.log(`🎯 Источник: ${mapping[cleanPhone]}`);
+    } else {
+      console.log(`❓ Неизвестный номер в маппинге`);
+    }
+  } 
+  else if (hasUtm) {
+    console.log(`✅ ТИП: ЗАЯВКА (найден UTM, но нет MANGO)`);
+    console.log(`🌐 UTM: ${utmSource}`);
+  } 
+  else {
+    console.log(`❓ ТИП: НЕОПРЕДЕЛЕННЫЙ (нет ни MANGO, ни UTM)`);
+  }
+  
+  console.log(`💰 Статус успешный: ${isSuccess ? 'ДА' : 'НЕТ'}`);
+  console.log(`📈 Засчитается в статистике: ${hasMangoLine ? 'ЗВОНКИ' : hasUtm ? 'ЗАЯВКИ' : 'НЕ ЗАСЧИТАЕТСЯ'}`);
+  console.log('=============================================');
+  
+  return {
+    rowNumber,
+    mangoLine,
+    utmSource,
+    hasMangoLine,
+    hasUtm,
+    isSuccess,
+    type: hasMangoLine ? 'call' : hasUtm ? 'form' : 'unknown'
+  };
 }
