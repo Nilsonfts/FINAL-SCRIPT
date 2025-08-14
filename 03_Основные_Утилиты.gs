@@ -139,27 +139,10 @@ function normalizePhone(phone) {
 function isSuccessStatus(status) {
   if (!status) return false;
   
-  const successStatuses = [
-    'оплачено',              // Основной статус - гость оплатил
-    'успешно реализовано',   // Успешно реализовано
-    'успешно в рп',          // Успешно в РП (ресторанный пункт)
-    'закрыто и реализовано',
-    'продано',
-    'договор подписан',
-    'сделка заключена',
-    'пришел',
-    'состоялось',
-    'выполнено',
-    'завершено успешно',
-    'won',
-    'closed won',
-    'success'
-  ];
-  
   // Приводим к нижнему регистру и убираем лишние пробелы
   const normalizedStatus = status.toString().toLowerCase().trim().replace(/\s+/g, ' ');
   
-  return successStatuses.some(successStatus => 
+  return SUCCESS_STATUSES.some(successStatus => 
     normalizedStatus.includes(successStatus)
   );
 }

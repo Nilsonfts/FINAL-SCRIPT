@@ -327,19 +327,6 @@ const CONFIG = {
  * ДОПОЛНИТЕЛЬНЫЕ КОНСТАНТЫ
  */
 
-// Статусы для определения успешности лидов
-const SUCCESS_STATUSES = [
-  'Успешно реализовано',
-  'Закрыто и реализовано', 
-  'Продано',
-  'Оплачено',
-  'Договор подписан',
-  'Сделка заключена',
-  'Won',
-  'Closed Won',
-  'Success'
-];
-
 // Маппинг типов каналов
 const CHANNEL_TYPES = {
   // Платный трафик
@@ -423,15 +410,6 @@ function getChannelTypeBySource(source) {
   }
   
   return 'unknown';
-}
-
-function isSuccessStatus(status) {
-  if (!status) return false;
-  
-  const lowerStatus = status.toString().toLowerCase();
-  return SUCCESS_STATUSES.some(successStatus => 
-    lowerStatus.includes(successStatus.toLowerCase())
-  );
 }
 
 function getColorByValue(value, min, max, colorScheme = 'default') {
