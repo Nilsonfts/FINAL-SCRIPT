@@ -10,21 +10,20 @@
  */
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
-  ui.createMenu('📊 AMO АНАЛИТИКА')
-    .addItem('🌟 СУПЕР ПОЛНЫЙ АНАЛИЗ (все 12 модулей)', 'runCompleteAnalysis')
+  ui.createMenu('� AMO ANALYTICS')
+    .addItem('📊 Полный анализ', 'runCompleteAnalysis')
     .addSeparator()
-    .addItem('🚀 Полный анализ (основные 4 отчета)', 'runMergedAmoAnalysis')
-    .addItem('⚡ Быстрый анализ (основное)', 'runQuickAnalysis')
+    .addItem('� Создать сводную аналитику', 'runAmoSummaryReport')
+    .addItem('📈 Анализ каналов', 'runChannelAnalysis')
+    .addItem('� Месячный дашборд', 'runMonthlyDashboard')
+    .addItem('🎯 Анализ первых касаний', 'runFirstTouchAnalysis')
+    .addItem('� Звонки vs Заявки', 'analyzeContactMethods')
+    .addItem('🍺 Дашборд бара', 'createBarDashboard')
     .addSeparator()
-    .addItem('📋 Только РАБОЧИЙ_АМО', 'runFullAnalyticsUpdate')
-    .addItem('🎯 Сводная аналитика', 'runAmoSummaryAnalysis')
-    .addItem('📈 Лиды по каналам', 'runLeadsByChannels')
-    .addItem('📊 Анализ каналов', 'runChannelAnalysis')
-    .addItem('📅 Месячный дашборд', 'runMonthlyDashboard')
-    .addSeparator()
-    .addItem('🔍 Проверить структуру таблицы', 'checkTableStructure')
-    .addItem('⚙️ Проверить конфигурацию', 'checkApiConfiguration')
-    .addItem('🔧 Аварийное восстановление', 'repairWorkingAmoSheet')
+    .addSubMenu(ui.createMenu('🔧 Диагностика')
+      .addItem('� Анализ статусов', 'analyzeAllStatuses')
+      .addItem('🔍 Проверить структуру таблицы', 'diagnoseWorkingAmoStructure')
+      .addItem('🔧 Исправить структуру', 'fixWorkingAmoStructureNow'))
     .addToUi();
 }
 
